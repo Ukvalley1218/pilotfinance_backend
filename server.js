@@ -3,6 +3,9 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import cors from "cors";
 import authRoutes from "./src/routes/auth.routes.js";
+import studentRoutes from "./src/routes/student.routes.js";
+import partnerRoutes from "./src/routes/partner.routes.js";
+import loanRoutes from "./src/routes/loan.routes.js";
 
 dotenv.config();
 const app = express();
@@ -16,6 +19,9 @@ mongoose
   .catch((err) => console.error(err));
 
 app.use("/api/auth", authRoutes);
+app.use("/api/student", studentRoutes);
+app.use("/api/partner", partnerRoutes);
+app.use("/api/loan", loanRoutes);
 
 app.get("/", (req, res) => {
   res.send("Auth API Running 🚀");

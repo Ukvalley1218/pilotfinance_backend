@@ -140,3 +140,65 @@ export const getProfile = async (req, res) => {
     });
   }
 };
+
+/**
+ * @desc Update Logged-in User Profile
+ * @route PUT /api/auth/profile
+ * @access Private
+ */
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, email, password } = req.body;
+
+    // Find logged-in user
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // If email is changed, check duplicate
+    if (email && email !== user.email) {
+      const emailExists = await User.findOne({ email });
+      if (emailExists) {
+        return res.status(409).json({
+          success: false,
+          message: "Email already in use",
+        });
+      }
+      user.email = email;
+    }
+
+    // Update name
+    if (name) {
+      user.name = name;
+    }
+
+    // Update password (hash if provided)
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      user.password = await bcrypt.hash(password, salt);
+    }
+
+    await user.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+      },
+    });
+  } catch (error) {
+    console.error("Update Profile Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
