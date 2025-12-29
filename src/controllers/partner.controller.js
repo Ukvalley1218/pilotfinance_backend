@@ -87,31 +87,65 @@ export const updatePartner = async (req, res) => {
 };
 
 /**
- * Get All Partners
+ * Get All Partners (Pagination + Search + Filters)
+ * @route GET /api/partners
  */
 export const getAllPartners = async (req, res) => {
   try {
-    const { status, businessType, search } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      status,
+      businessType,
+      sortBy = "createdAt",
+      order = "desc",
+    } = req.query;
 
+    // Pagination
+    const pageNumber = parseInt(page);
+    const pageSize = parseInt(limit);
+    const skip = (pageNumber - 1) * pageSize;
+
+    // Base filter
     const filter = {};
 
+    // Specific filters
     if (status) filter.status = status;
     if (businessType) filter.businessType = businessType;
 
+    // Global search (search in any important field)
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } },
         { businessName: { $regex: search, $options: "i" } },
+        { businessType: { $regex: search, $options: "i" } },
+        { status: { $regex: search, $options: "i" } },
       ];
     }
 
-    const partners = await Partner.find(filter).sort({ createdAt: -1 });
+    // Sorting
+    const sortOrder = order === "asc" ? 1 : -1;
+    const sortOptions = { [sortBy]: sortOrder };
+
+    // Query
+    const partners = await Partner.find(filter)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(pageSize);
+
+    const totalRecords = await Partner.countDocuments(filter);
 
     return res.status(200).json({
       success: true,
-      count: partners.length,
+      pagination: {
+        totalRecords,
+        currentPage: pageNumber,
+        totalPages: Math.ceil(totalRecords / pageSize),
+        pageSize,
+      },
       data: partners,
     });
   } catch (error) {

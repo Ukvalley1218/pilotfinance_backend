@@ -162,31 +162,80 @@ export const updateStudent = async (req, res) => {
 };
 
 /**
- * Get All Students (with optional filters)
+ * Get All Students (Pagination + Search + Filters)
+ * @route GET /api/students
  */
 export const getAllStudents = async (req, res) => {
   try {
-    const { status, loan, search } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      status,
+      loan,
+      country,
+      agency,
+      uni,
+      course,
+      loanType,
+      sortBy = "createdAt",
+      order = "desc",
+    } = req.query;
 
+    // Pagination
+    const pageNumber = parseInt(page);
+    const pageSize = parseInt(limit);
+    const skip = (pageNumber - 1) * pageSize;
+
+    // Base filter
     const filter = {};
 
+    // Field-based filters
     if (status) filter.status = status;
     if (loan) filter.loan = loan;
+    if (country) filter.country = country;
+    if (agency) filter.agency = agency;
+    if (uni) filter.uni = uni;
+    if (course) filter.course = course;
+    if (loanType) filter.loanType = loanType;
 
-    // Search by name / email / phone
+    // Global search across all important fields
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } },
+        { agency: { $regex: search, $options: "i" } },
+        { uni: { $regex: search, $options: "i" } },
+        { course: { $regex: search, $options: "i" } },
+        { country: { $regex: search, $options: "i" } },
+        { appId: { $regex: search, $options: "i" } },
+        { loanId: { $regex: search, $options: "i" } },
+        { loanType: { $regex: search, $options: "i" } },
+        { status: { $regex: search, $options: "i" } },
       ];
     }
 
-    const students = await Student.find(filter).sort({ createdAt: -1 });
+    // Sorting
+    const sortOrder = order === "asc" ? 1 : -1;
+    const sortOptions = { [sortBy]: sortOrder };
+
+    // Query
+    const students = await Student.find(filter)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(pageSize);
+
+    const totalRecords = await Student.countDocuments(filter);
 
     return res.status(200).json({
       success: true,
-      count: students.length,
+      pagination: {
+        totalRecords,
+        currentPage: pageNumber,
+        totalPages: Math.ceil(totalRecords / pageSize),
+        pageSize,
+      },
       data: students,
     });
   } catch (error) {

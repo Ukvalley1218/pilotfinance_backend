@@ -5,10 +5,7 @@ import { Loan } from "../models/loan.model.js";
  */
 export const createLoan = async (req, res) => {
   try {
-    const {
-      loanId,
-      requestedAmount,
-    } = req.body;
+    const { loanId, requestedAmount } = req.body;
 
     if (!loanId || !requestedAmount) {
       return res.status(400).json({
@@ -41,7 +38,6 @@ export const createLoan = async (req, res) => {
     });
   }
 };
-
 
 /**
  * Update Loan
@@ -91,29 +87,68 @@ export const updateLoan = async (req, res) => {
 };
 
 /**
- * Get All Loans
+ * Get All Loans (Pagination + Search + Filters)
+ * @route GET /api/loans
+ * @access Public / Protected (as per your auth)
  */
 export const getAllLoans = async (req, res) => {
   try {
-    const { status, type, search } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      search,
+      status,
+      type,
+      approvedBy,
+      sortBy = "createdAt",
+      order = "desc",
+    } = req.query;
 
+    // Pagination
+    const pageNumber = parseInt(page);
+    const pageSize = parseInt(limit);
+    const skip = (pageNumber - 1) * pageSize;
+
+    // Base filter
     const filter = {};
 
+    // Specific filters
     if (status) filter.status = status;
     if (type) filter.type = type;
+    if (approvedBy) filter.approvedBy = approvedBy;
 
+    // Global search across multiple fields
     if (search) {
       filter.$or = [
         { loanId: { $regex: search, $options: "i" } },
         { approvedBy: { $regex: search, $options: "i" } },
+        { borrowerName: { $regex: search, $options: "i" } },
+        { borrowerEmail: { $regex: search, $options: "i" } },
+        { status: { $regex: search, $options: "i" } },
+        { type: { $regex: search, $options: "i" } },
       ];
     }
 
-    const loans = await Loan.find(filter).sort({ createdAt: -1 });
+    // Sorting
+    const sortOrder = order === "asc" ? 1 : -1;
+    const sortOptions = { [sortBy]: sortOrder };
+
+    // Query execution
+    const loans = await Loan.find(filter)
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(pageSize);
+
+    const totalRecords = await Loan.countDocuments(filter);
 
     return res.status(200).json({
       success: true,
-      count: loans.length,
+      pagination: {
+        totalRecords,
+        currentPage: pageNumber,
+        totalPages: Math.ceil(totalRecords / pageSize),
+        pageSize,
+      },
       data: loans,
     });
   } catch (error) {
@@ -125,7 +160,6 @@ export const getAllLoans = async (req, res) => {
     });
   }
 };
-
 
 /**
  * Get Loan by ID
@@ -156,7 +190,6 @@ export const getLoanById = async (req, res) => {
     });
   }
 };
-
 
 /**
  * Delete Loan
