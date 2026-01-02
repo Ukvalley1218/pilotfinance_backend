@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+// 1. UPDATED: Import dbOne from db.js (root) instead of server.js
+import { dbOne } from "../../db.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -23,4 +25,5 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export const User = mongoose.model("User", userSchema);
+// 2. Attach the schema to the correct database instance exported from db.js
+export const User = dbOne.model("User", userSchema);

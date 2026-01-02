@@ -1,27 +1,12 @@
 import { Student } from "../models/student.model.js";
 
 /**
- * Create Student
+ * @desc Create Student
+ * @route POST /api/student
  */
 export const createStudent = async (req, res) => {
   try {
-    const {
-      name,
-      email,
-      phone,
-      agency,
-      uni,
-      course,
-      country,
-      intake,
-      duration,
-      appId,
-      loanId,
-      loanType,
-      requestedAmount,
-      status,
-      loan,
-    } = req.body;
+    const { name, email, phone } = req.body;
 
     // Basic validation
     if (!name || !email || !phone) {
@@ -31,7 +16,7 @@ export const createStudent = async (req, res) => {
       });
     }
 
-    // Check duplicate email
+    // Check duplicate email (Executes on dbOne via the model connection)
     const existingStudent = await Student.findOne({ email });
     if (existingStudent) {
       return res.status(409).json({
@@ -40,23 +25,7 @@ export const createStudent = async (req, res) => {
       });
     }
 
-    const student = await Student.create({
-      name,
-      email,
-      phone,
-      agency,
-      uni,
-      course,
-      country,
-      intake,
-      duration,
-      appId,
-      loanId,
-      loanType,
-      requestedAmount,
-      status,
-      loan,
-    });
+    const student = await Student.create(req.body);
 
     return res.status(201).json({
       success: true,
@@ -68,37 +37,19 @@ export const createStudent = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
     });
   }
 };
 
 /**
- * Update Student by ID
+ * @desc Update Student by ID
+ * @route PUT /api/student/:id
  */
 export const updateStudent = async (req, res) => {
   try {
     const { id } = req.params;
+    const { email } = req.body;
 
-    const {
-      name,
-      email,
-      phone,
-      agency,
-      uni,
-      course,
-      country,
-      intake,
-      duration,
-      appId,
-      loanId,
-      loanType,
-      requestedAmount,
-      status,
-      loan,
-    } = req.body;
-
-    // Check student exists
     const student = await Student.findById(id);
     if (!student) {
       return res.status(404).json({
@@ -107,43 +58,20 @@ export const updateStudent = async (req, res) => {
       });
     }
 
-    // If email is being updated, check duplicate
     if (email && email !== student.email) {
       const emailExists = await Student.findOne({ email });
       if (emailExists) {
         return res.status(409).json({
           success: false,
-          message: "Email already in use by another student",
+          message: "Email already in use",
         });
       }
     }
 
-    // Update only provided fields
     const updatedStudent = await Student.findByIdAndUpdate(
       id,
-      {
-        $set: {
-          name,
-          email,
-          phone,
-          agency,
-          uni,
-          course,
-          country,
-          intake,
-          duration,
-          appId,
-          loanId,
-          loanType,
-          requestedAmount,
-          status,
-          loan,
-        },
-      },
-      {
-        new: true,
-        runValidators: true,
-      }
+      { $set: req.body },
+      { new: true, runValidators: true }
     );
 
     return res.status(200).json({
@@ -156,14 +84,13 @@ export const updateStudent = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
     });
   }
 };
 
 /**
- * Get All Students (Pagination + Search + Filters)
- * @route GET /api/students
+ * @desc Get All Students (Pagination + Search + Filters)
+ * @route GET /api/student
  */
 export const getAllStudents = async (req, res) => {
   try {
@@ -174,57 +101,35 @@ export const getAllStudents = async (req, res) => {
       status,
       loan,
       country,
-      agency,
-      uni,
-      course,
-      loanType,
       sortBy = "createdAt",
       order = "desc",
     } = req.query;
 
-    // Pagination
-    const pageNumber = parseInt(page);
-    const pageSize = parseInt(limit);
-    const skip = (pageNumber - 1) * pageSize;
-
-    // Base filter
+    const skip = (parseInt(page) - 1) * parseInt(limit);
     const filter = {};
 
-    // Field-based filters
-    if (status) filter.status = status;
-    if (loan) filter.loan = loan;
-    if (country) filter.country = country;
-    if (agency) filter.agency = agency;
-    if (uni) filter.uni = uni;
-    if (course) filter.course = course;
-    if (loanType) filter.loanType = loanType;
+    // Syncing with Frontend Select options:
+    // Only apply filter if the value is not "All" or empty
+    if (status && !status.startsWith("All")) filter.status = status;
+    if (loan && !loan.startsWith("All")) filter.loan = loan;
+    if (country && !country.startsWith("All")) filter.country = country;
 
-    // Global search across all important fields
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
         { phone: { $regex: search, $options: "i" } },
-        { agency: { $regex: search, $options: "i" } },
-        { uni: { $regex: search, $options: "i" } },
-        { course: { $regex: search, $options: "i" } },
-        { country: { $regex: search, $options: "i" } },
         { appId: { $regex: search, $options: "i" } },
         { loanId: { $regex: search, $options: "i" } },
-        { loanType: { $regex: search, $options: "i" } },
-        { status: { $regex: search, $options: "i" } },
       ];
     }
 
-    // Sorting
-    const sortOrder = order === "asc" ? 1 : -1;
-    const sortOptions = { [sortBy]: sortOrder };
+    const sortOptions = { [sortBy]: order === "asc" ? 1 : -1 };
 
-    // Query
     const students = await Student.find(filter)
       .sort(sortOptions)
       .skip(skip)
-      .limit(pageSize);
+      .limit(parseInt(limit));
 
     const totalRecords = await Student.countDocuments(filter);
 
@@ -232,9 +137,8 @@ export const getAllStudents = async (req, res) => {
       success: true,
       pagination: {
         totalRecords,
-        currentPage: pageNumber,
-        totalPages: Math.ceil(totalRecords / pageSize),
-        pageSize,
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalRecords / parseInt(limit)),
       },
       data: students,
     });
@@ -243,69 +147,40 @@ export const getAllStudents = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
     });
   }
 };
 
 /**
- * Get Student by ID
+ * @desc Get Student by ID
  */
 export const getStudentById = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const student = await Student.findById(id);
-
+    const student = await Student.findById(req.params.id);
     if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: "Student not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
     }
-
-    return res.status(200).json({
-      success: true,
-      data: student,
-    });
+    return res.status(200).json({ success: true, data: student });
   } catch (error) {
-    console.error("Get Student Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Invalid student ID",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: "Invalid ID" });
   }
 };
 
 /**
- * Delete Student by ID
+ * @desc Delete Student
  */
 export const deleteStudent = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const student = await Student.findById(id);
-
+    const student = await Student.findByIdAndDelete(req.params.id);
     if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: "Student not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Student not found" });
     }
-
-    await Student.findByIdAndDelete(id);
-
-    return res.status(200).json({
-      success: true,
-      message: "Student deleted successfully",
-    });
+    return res.status(200).json({ success: true, message: "Student deleted" });
   } catch (error) {
-    console.error("Delete Student Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: "Error deleting" });
   }
 };

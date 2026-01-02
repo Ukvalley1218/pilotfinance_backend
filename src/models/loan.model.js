@@ -1,11 +1,13 @@
 import mongoose from "mongoose";
+// 1. UPDATED: Import dbOne from db.js instead of server.js
+import { dbOne } from "../../db.js";
 
 const loanSchema = new mongoose.Schema(
   {
     loanId: {
       type: String,
       required: true,
-      unique: true, // LN-12456
+      unique: true, // e.g., LN-12456
       trim: true,
     },
     type: {
@@ -21,7 +23,7 @@ const loanSchema = new mongoose.Schema(
       default: 0,
     },
     interestRate: {
-      type: Number, // 9.5
+      type: Number, // e.g., 9.5
       default: 0,
     },
     status: {
@@ -44,4 +46,5 @@ const loanSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export const Loan = mongoose.model("Loan", loanSchema);
+// 2. Attach the schema to the correct database instance exported from db.js
+export const Loan = dbOne.model("Loan", loanSchema);

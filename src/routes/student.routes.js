@@ -1,19 +1,24 @@
 import express from "express";
-import { protect } from "../middleware/auth.middleware";
+import { protect } from "../middleware/auth.middleware.js"; // Added .js extension
 import {
   createStudent,
   deleteStudent,
   getAllStudents,
   getStudentById,
   updateStudent,
-} from "../controllers/student.controller";
+} from "../controllers/student.controller.js"; // Added .js extension
 
 const router = express.Router();
 
-router.post("/add_student", protect, createStudent);
-router.put("/students/:id", protect, updateStudent);
-router.get("/students", protect, getAllStudents);
-router.get("/students/:id", protect, getStudentById);
-router.delete("/students/:id", protect, deleteStudent);
+/**
+ * All routes are prefixed with /api/student in server.js
+ * All routes are protected via JWT middleware
+ */
+
+router.post("/", protect, createStudent); // POST /api/student
+router.get("/", protect, getAllStudents); // GET /api/student
+router.get("/:id", protect, getStudentById); // GET /api/student/:id
+router.put("/:id", protect, updateStudent); // PUT /api/student/:id
+router.delete("/:id", protect, deleteStudent); // DELETE /api/student/:id
 
 export default router;

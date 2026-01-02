@@ -1,7 +1,8 @@
-import { Loan } from "../models/loan.model.js";
+import { Loan } from "../models/loan.model.js"; // Import matching named export
 
 /**
- * Create Loan
+ * @desc Create Loan
+ * @route POST /api/loan
  */
 export const createLoan = async (req, res) => {
   try {
@@ -22,6 +23,7 @@ export const createLoan = async (req, res) => {
       });
     }
 
+    // Creating loan using the dbOne connection defined in the model
     const loan = await Loan.create(req.body);
 
     return res.status(201).json({
@@ -34,13 +36,13 @@ export const createLoan = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
     });
   }
 };
 
 /**
- * Update Loan
+ * @desc Update Loan (Used for Approvals/Verification)
+ * @route PUT /api/loan/:id
  */
 export const updateLoan = async (req, res) => {
   try {
@@ -54,15 +56,9 @@ export const updateLoan = async (req, res) => {
       });
     }
 
-    // Prevent duplicate loanId update
-    if (req.body.loanId && req.body.loanId !== loan.loanId) {
-      const exists = await Loan.findOne({ loanId: req.body.loanId });
-      if (exists) {
-        return res.status(409).json({
-          success: false,
-          message: "Loan ID already exists",
-        });
-      }
+    // Logic to sync status changes with disbursement dates if needed
+    if (req.body.status === "Disbursed" && !req.body.disbursementDate) {
+      req.body.disbursementDate = new Date();
     }
 
     const updatedLoan = await Loan.findByIdAndUpdate(
@@ -81,15 +77,13 @@ export const updateLoan = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
     });
   }
 };
 
 /**
- * Get All Loans (Pagination + Search + Filters)
- * @route GET /api/loans
- * @access Public / Protected (as per your auth)
+ * @desc Get All Loans (Used for Reports & Analytics)
+ * @route GET /api/loan
  */
 export const getAllLoans = async (req, res) => {
   try {
@@ -99,45 +93,30 @@ export const getAllLoans = async (req, res) => {
       search,
       status,
       type,
-      approvedBy,
       sortBy = "createdAt",
       order = "desc",
     } = req.query;
 
-    // Pagination
-    const pageNumber = parseInt(page);
-    const pageSize = parseInt(limit);
-    const skip = (pageNumber - 1) * pageSize;
-
-    // Base filter
+    const skip = (parseInt(page) - 1) * parseInt(limit);
     const filter = {};
 
-    // Specific filters
-    if (status) filter.status = status;
-    if (type) filter.type = type;
-    if (approvedBy) filter.approvedBy = approvedBy;
+    if (status && status !== "All Status") filter.status = status;
+    if (type && type !== "All Types") filter.type = type;
 
-    // Global search across multiple fields
     if (search) {
       filter.$or = [
         { loanId: { $regex: search, $options: "i" } },
         { approvedBy: { $regex: search, $options: "i" } },
-        { borrowerName: { $regex: search, $options: "i" } },
-        { borrowerEmail: { $regex: search, $options: "i" } },
         { status: { $regex: search, $options: "i" } },
-        { type: { $regex: search, $options: "i" } },
       ];
     }
 
-    // Sorting
-    const sortOrder = order === "asc" ? 1 : -1;
-    const sortOptions = { [sortBy]: sortOrder };
+    const sortOptions = { [sortBy]: order === "asc" ? 1 : -1 };
 
-    // Query execution
     const loans = await Loan.find(filter)
       .sort(sortOptions)
       .skip(skip)
-      .limit(pageSize);
+      .limit(parseInt(limit));
 
     const totalRecords = await Loan.countDocuments(filter);
 
@@ -145,9 +124,8 @@ export const getAllLoans = async (req, res) => {
       success: true,
       pagination: {
         totalRecords,
-        currentPage: pageNumber,
-        totalPages: Math.ceil(totalRecords / pageSize),
-        pageSize,
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalRecords / parseInt(limit)),
       },
       data: loans,
     });
@@ -156,68 +134,40 @@ export const getAllLoans = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
     });
   }
 };
 
 /**
- * Get Loan by ID
+ * @desc Get Loan by ID
  */
 export const getLoanById = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const loan = await Loan.findById(id);
-
+    const loan = await Loan.findById(req.params.id);
     if (!loan) {
-      return res.status(404).json({
-        success: false,
-        message: "Loan not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Loan not found" });
     }
-
-    return res.status(200).json({
-      success: true,
-      data: loan,
-    });
+    return res.status(200).json({ success: true, data: loan });
   } catch (error) {
-    console.error("Get Loan Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Invalid loan ID",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: "Invalid ID" });
   }
 };
 
 /**
- * Delete Loan
+ * @desc Delete Loan
  */
 export const deleteLoan = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const loan = await Loan.findById(id);
+    const loan = await Loan.findByIdAndDelete(req.params.id);
     if (!loan) {
-      return res.status(404).json({
-        success: false,
-        message: "Loan not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Loan not found" });
     }
-
-    await Loan.findByIdAndDelete(id);
-
-    return res.status(200).json({
-      success: true,
-      message: "Loan deleted successfully",
-    });
+    return res.status(200).json({ success: true, message: "Deleted" });
   } catch (error) {
-    console.error("Delete Loan Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: "Error deleting" });
   }
 };
