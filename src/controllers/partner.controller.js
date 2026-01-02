@@ -1,7 +1,8 @@
-import { Partner } from "../models/partner.model.js";
+import { Partner } from "../models/partner.model.js"; // Import matching named export
 
 /**
- * Create Partner
+ * @desc Create Partner
+ * @route POST /api/partner
  */
 export const createPartner = async (req, res) => {
   try {
@@ -14,6 +15,7 @@ export const createPartner = async (req, res) => {
       });
     }
 
+    // Check existing partner on dbOne
     const existingPartner = await Partner.findOne({ email });
     if (existingPartner) {
       return res.status(409).json({
@@ -34,13 +36,13 @@ export const createPartner = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
     });
   }
 };
 
 /**
- * Update Partner
+ * @desc Update Partner
+ * @route PUT /api/partner/:id
  */
 export const updatePartner = async (req, res) => {
   try {
@@ -81,14 +83,13 @@ export const updatePartner = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
     });
   }
 };
 
 /**
- * Get All Partners (Pagination + Search + Filters)
- * @route GET /api/partners
+ * @desc Get All Partners (With Filter & Search for Frontend Directory)
+ * @route GET /api/partner
  */
 export const getAllPartners = async (req, res) => {
   try {
@@ -102,39 +103,36 @@ export const getAllPartners = async (req, res) => {
       order = "desc",
     } = req.query;
 
-    // Pagination
-    const pageNumber = parseInt(page);
-    const pageSize = parseInt(limit);
-    const skip = (pageNumber - 1) * pageSize;
-
-    // Base filter
+    const skip = (parseInt(page) - 1) * parseInt(limit);
     const filter = {};
 
-    // Specific filters
-    if (status) filter.status = status;
-    if (businessType) filter.businessType = businessType;
+    // Logic to ignore "All" options from frontend
+    if (status && status !== "All Status" && status !== "All") {
+      filter.status = status;
+    }
 
-    // Global search (search in any important field)
+    if (
+      businessType &&
+      businessType !== "All Types" &&
+      businessType !== "All"
+    ) {
+      filter.businessType = businessType;
+    }
+
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
-        { phone: { $regex: search, $options: "i" } },
         { businessName: { $regex: search, $options: "i" } },
-        { businessType: { $regex: search, $options: "i" } },
-        { status: { $regex: search, $options: "i" } },
       ];
     }
 
-    // Sorting
-    const sortOrder = order === "asc" ? 1 : -1;
-    const sortOptions = { [sortBy]: sortOrder };
+    const sortOptions = { [sortBy]: order === "asc" ? 1 : -1 };
 
-    // Query
     const partners = await Partner.find(filter)
       .sort(sortOptions)
       .skip(skip)
-      .limit(pageSize);
+      .limit(parseInt(limit));
 
     const totalRecords = await Partner.countDocuments(filter);
 
@@ -142,9 +140,8 @@ export const getAllPartners = async (req, res) => {
       success: true,
       pagination: {
         totalRecords,
-        currentPage: pageNumber,
-        totalPages: Math.ceil(totalRecords / pageSize),
-        pageSize,
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalRecords / parseInt(limit)),
       },
       data: partners,
     });
@@ -153,68 +150,40 @@ export const getAllPartners = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Internal server error",
-      error: error.message,
     });
   }
 };
 
 /**
- * Get Partner by ID
+ * @desc Get Partner by ID
  */
 export const getPartnerById = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const partner = await Partner.findById(id);
-
+    const partner = await Partner.findById(req.params.id);
     if (!partner) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Partner not found" });
     }
-
-    return res.status(200).json({
-      success: true,
-      data: partner,
-    });
+    return res.status(200).json({ success: true, data: partner });
   } catch (error) {
-    console.error("Get Partner Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Invalid partner ID",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: "Invalid ID" });
   }
 };
 
 /**
- * Delete Partner
+ * @desc Delete Partner
  */
 export const deletePartner = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const partner = await Partner.findById(id);
+    const partner = await Partner.findByIdAndDelete(req.params.id);
     if (!partner) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Partner not found" });
     }
-
-    await Partner.findByIdAndDelete(id);
-
-    return res.status(200).json({
-      success: true,
-      message: "Partner deleted successfully",
-    });
+    return res.status(200).json({ success: true, message: "Partner deleted" });
   } catch (error) {
-    console.error("Delete Partner Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      error: error.message,
-    });
+    return res.status(500).json({ success: false, message: "Error deleting" });
   }
 };

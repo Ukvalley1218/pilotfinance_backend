@@ -1,4 +1,6 @@
 import mongoose from "mongoose";
+// 1. UPDATED: Import dbOne from db.js (root) instead of server.js
+import { dbOne } from "../../db.js";
 
 const studentSchema = new mongoose.Schema(
   {
@@ -73,4 +75,5 @@ const studentSchema = new mongoose.Schema(
   }
 );
 
-export const Student = mongoose.model("Student", studentSchema);
+// 2. Attach the schema to the centralized database instance exported from db.js
+export const Student = dbOne.model("Student", studentSchema);

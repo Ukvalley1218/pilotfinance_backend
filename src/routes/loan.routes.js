@@ -10,10 +10,16 @@ import { protect } from "../middleware/auth.middleware.js";
 
 const router = express.Router();
 
-router.post("/loans", protect, createLoan);
-router.put("/loans/:id", protect, updateLoan);
-router.get("/loans", protect, getAllLoans);
-router.get("/loans/:id", protect, getLoanById);
-router.delete("/loans/:id", protect, deleteLoan);
+// Base route is already /api/loan in your server.js
+// Using "/" and "/:id" makes the endpoints cleaner
+
+router.post("/", protect, createLoan); // POST /api/loan
+router.get("/", protect, getAllLoans); // GET /api/loan
+router.get("/:id", protect, getLoanById); // GET /api/loan/:id
+router.put("/:id", protect, updateLoan); // PUT /api/loan/:id
+router.delete("/:id", protect, deleteLoan); // DELETE /api/loan/:id
+
+// Alias for frontend compatibility if  React code uses "/loans"
+router.get("/all", protect, getAllLoans);
 
 export default router;
