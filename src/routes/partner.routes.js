@@ -12,13 +12,22 @@ const router = express.Router();
 
 /**
  * All routes are prefixed with /api/partner in server.js
- * All routes are protected to ensure only authenticated staff can access partner data
  */
 
-router.post("/", protect, createPartner); // POST /api/partner
-router.get("/", protect, getAllPartners); // GET /api/partner
-router.get("/:id", protect, getPartnerById); // GET /api/partner/:id
-router.put("/:id", protect, updatePartner); // PUT /api/partner/:id
-router.delete("/:id", protect, deletePartner); // DELETE /api/partner/:id
+// --- GET ROUTES ---
+// Handles GET /api/partner
+router.get("/", protect, getAllPartners);
+
+// Handles GET /api/partner/partners
+// FIX: This matches the exact URL shown in your tester's console error
+router.get("/partners", protect, getAllPartners);
+
+// --- POST ROUTES ---
+router.post("/", protect, createPartner);
+
+// --- ID BASED ROUTES ---
+router.get("/:id", protect, getPartnerById);
+router.put("/:id", protect, updatePartner);
+router.delete("/:id", protect, deletePartner);
 
 export default router;
