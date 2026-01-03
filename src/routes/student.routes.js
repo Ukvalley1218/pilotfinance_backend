@@ -12,13 +12,22 @@ const router = express.Router();
 
 /**
  * All routes are prefixed with /api/student in server.js
- * All routes are protected via JWT middleware
  */
 
-router.post("/", protect, createStudent); // POST /api/student
-router.get("/", protect, getAllStudents); // GET /api/student
-router.get("/:id", protect, getStudentById); // GET /api/student/:id
-router.put("/:id", protect, updateStudent); // PUT /api/student/:id
-router.delete("/:id", protect, deleteStudent); // DELETE /api/student/:id
+// --- GET ROUTES ---
+// Handles GET /api/student
+router.get("/", protect, getAllStudents);
+
+// Handles GET /api/student/students
+// FIX: This matches the exact URL shown in your tester's console error
+router.get("/students", protect, getAllStudents);
+
+// --- POST ROUTES ---
+router.post("/", protect, createStudent);
+
+// --- ID BASED ROUTES ---
+router.get("/:id", protect, getStudentById);
+router.put("/:id", protect, updateStudent);
+router.delete("/:id", protect, deleteStudent);
 
 export default router;

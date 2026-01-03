@@ -15,9 +15,9 @@ router.post("/login", loginUser);
 
 // Protected routes (Require JWT Token)
 router.get("/profile", protect, getProfile);
+router.get("/me", protect, getProfile); // Added alias for frontend compatibility
 
-// We use both "/profile" and "/update-profile" to ensure
-// compatibility with  frontend API calls
+// Profile updates
 router.put("/profile", protect, updateProfile);
 router.put("/update-profile", protect, updateProfile);
 
