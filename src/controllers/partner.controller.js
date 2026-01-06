@@ -1,48 +1,64 @@
-import { Partner } from "../models/partner.model.js"; // Import matching named export
+import { Partner } from "../models/partner.model.js";
+import { Notification } from "../models/notification.model.js"; // Import the notification model
 
 /**
  * @desc Create Partner
- * @route POST /api/partner
+ * @route POST /api/partner/partners
  */
 export const createPartner = async (req, res) => {
   try {
     const { name, email, phone } = req.body;
 
+    // 1. Backend Validation (Essential for DB One)
     if (!name || !email || !phone) {
       return res.status(400).json({
         success: false,
-        message: "Name, email and phone are required",
+        message:
+          "Missing Required Fields: Name, Email, and Phone are mandatory.",
       });
     }
 
-    // Check existing partner on dbOne
-    const existingPartner = await Partner.findOne({ email });
+    // 2. Check for duplicate on the new database cluster
+    const existingPartner = await Partner.findOne({
+      email: email.toLowerCase(),
+    });
     if (existingPartner) {
       return res.status(409).json({
         success: false,
-        message: "Partner with this email already exists",
+        message: "A partner with this email address already exists.",
       });
     }
 
-    const partner = await Partner.create(req.body);
+    // 3. Save to database_one
+    const partner = await Partner.create({
+      ...req.body,
+      email: email.toLowerCase(),
+    });
+
+    // --- NEW: Dynamic Notification Trigger ---
+    await Notification.create({
+      type: "success",
+      message: `New Partner Registered: ${partner.name}`,
+      link: `/admin/partners/${partner._id}`,
+    });
 
     return res.status(201).json({
       success: true,
-      message: "Partner created successfully",
+      message: "Partner registered successfully",
       data: partner,
     });
   } catch (error) {
-    console.error("Create Partner Error:", error);
+    console.error("Critical Create Partner Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Internal server error: Failed to save partner record.",
     });
   }
 };
 
 /**
  * @desc Update Partner
- * @route PUT /api/partner/:id
+ * @route PUT /api/partner/partners/:id
  */
 export const updatePartner = async (req, res) => {
   try {
@@ -52,50 +68,64 @@ export const updatePartner = async (req, res) => {
     if (!partner) {
       return res.status(404).json({
         success: false,
-        message: "Partner not found",
+        message: "Partner record not found.",
       });
     }
 
-    // Email duplicate check
-    if (req.body.email && req.body.email !== partner.email) {
-      const emailExists = await Partner.findOne({ email: req.body.email });
+    // Duplicate email check for updates
+    if (req.body.email && req.body.email.toLowerCase() !== partner.email) {
+      const emailExists = await Partner.findOne({
+        email: req.body.email.toLowerCase(),
+      });
       if (emailExists) {
         return res.status(409).json({
           success: false,
-          message: "Email already in use",
+          message: "The new email is already in use by another partner.",
         });
       }
     }
 
     const updatedPartner = await Partner.findByIdAndUpdate(
       id,
-      { $set: req.body },
+      {
+        $set: {
+          ...req.body,
+          email: req.body.email?.toLowerCase() || partner.email,
+        },
+      },
       { new: true, runValidators: true }
     );
 
+    // --- NEW: Dynamic Notification Trigger for Updates ---
+    await Notification.create({
+      type: "info",
+      message: `Partner Profile Updated: ${updatedPartner.name}`,
+      link: `/admin/partners/${updatedPartner._id}`,
+    });
+
     return res.status(200).json({
       success: true,
-      message: "Partner updated successfully",
+      message: "Partner profile updated successfully",
       data: updatedPartner,
     });
   } catch (error) {
     console.error("Update Partner Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Server error while updating partner record.",
     });
   }
 };
 
 /**
- * @desc Get All Partners (With Filter & Search for Frontend Directory)
- * @route GET /api/partner
+ * @desc Get All Partners (Matches frontend fetchPartners call)
+ * @route GET /api/partner/partners
  */
 export const getAllPartners = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 10,
+      limit = 100, // Increased limit for full directory view
       search,
       status,
       businessType,
@@ -106,16 +136,12 @@ export const getAllPartners = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const filter = {};
 
-    // Logic to ignore "All" options from frontend
-    if (status && status !== "All Status" && status !== "All") {
+    // Logic to handle frontend "All" filters
+    if (status && !["All Status", "All"].includes(status)) {
       filter.status = status;
     }
 
-    if (
-      businessType &&
-      businessType !== "All Types" &&
-      businessType !== "All"
-    ) {
+    if (businessType && !["All Types", "All"].includes(businessType)) {
       filter.businessType = businessType;
     }
 
@@ -149,7 +175,7 @@ export const getAllPartners = async (req, res) => {
     console.error("Get Partners Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Failed to load partners from the server.",
     });
   }
 };
@@ -167,7 +193,9 @@ export const getPartnerById = async (req, res) => {
     }
     return res.status(200).json({ success: true, data: partner });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Invalid ID" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid Partner ID" });
   }
 };
 
@@ -182,8 +210,12 @@ export const deletePartner = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Partner not found" });
     }
-    return res.status(200).json({ success: true, message: "Partner deleted" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Partner record deleted" });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Error deleting" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Error deleting record" });
   }
 };

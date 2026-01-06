@@ -4,25 +4,22 @@ import { generateToken } from "../utils/generateToken.js";
 
 /**
  * @desc Register User
- * @route POST /api/auth/register
  */
 export const registerUser = async (req, res) => {
   try {
     const { name, email, password } = req.body;
 
     if (!name || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "All fields are required",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields are required" });
     }
 
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: "User already exists",
-      });
+      return res
+        .status(409)
+        .json({ success: false, message: "User already exists" });
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -45,40 +42,29 @@ export const registerUser = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Register Error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 /**
  * @desc Login User
- * @route POST /api/auth/login
  */
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: "Email and password are required",
-      });
-    }
-
     const user = await User.findOne({ email });
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid credentials" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid credentials" });
     }
 
     return res.status(200).json({
@@ -92,70 +78,62 @@ export const loginUser = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Login Error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 /**
- * @desc Get Logged-in User Profile
- * @route GET /api/auth/profile
+ * @desc Get Logged-in User Profile (For Settings page initialization)
  */
 export const getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select("-password");
-
     if (!user) {
       return res
         .status(404)
         .json({ success: false, message: "User not found" });
     }
 
-    res.status(200).json({
-      success: true,
-      data: user,
-    });
+    res.status(200).json({ success: true, data: user });
   } catch (error) {
-    console.error("Profile Error:", error);
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
 /**
- * @desc Update Logged-in User Profile
- * @route PUT /api/auth/profile (matches router.put("/profile", ...))
+ * @desc Update Logged-in User Profile & Preferences
+ * Handles: Name, Email, Contact, Roles, and Toggles
  */
 export const updateProfile = async (req, res) => {
   try {
-    // Added 'contact' and 'preferences' to match the frontend Settings page
-    const { name, email, password, contact, preferences } = req.body;
+    const { name, email, contact, role, preferences } = req.body;
 
     const user = await User.findById(req.user.id);
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
     }
 
+    // Email collision check
     if (email && email !== user.email) {
       const emailExists = await User.findOne({ email });
       if (emailExists) {
-        return res.status(409).json({
-          success: false,
-          message: "Email already in use",
-        });
+        return res
+          .status(409)
+          .json({ success: false, message: "Email already in use" });
       }
       user.email = email;
     }
 
+    // Update fields only if they are provided in request
     if (name) user.name = name;
-    if (contact) user.contact = contact; // For the Settings Contact field
-    if (preferences) user.preferences = preferences; // For the Notification toggles
+    if (contact) user.contact = contact;
+    if (role) user.role = role;
 
-    if (password) {
-      const salt = await bcrypt.genSalt(10);
-      user.password = await bcrypt.hash(password, salt);
+    // Nested preference updates (Merge old with new)
+    if (preferences) {
+      user.preferences = { ...user.preferences, ...preferences };
     }
 
     await user.save();
@@ -168,11 +146,42 @@ export const updateProfile = async (req, res) => {
         name: user.name,
         email: user.email,
         contact: user.contact,
+        role: user.role,
         preferences: user.preferences,
       },
     });
   } catch (error) {
     console.error("Update Profile Error:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    res
+      .status(500)
+      .json({ success: false, message: "Server error during update" });
+  }
+};
+
+/**
+ * @desc Change User Password (For the Security section)
+ */
+export const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    const user = await User.findById(req.user.id);
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+
+    if (!isMatch) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Current password incorrect" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.password = await bcrypt.hash(newPassword, salt);
+    await user.save();
+
+    res
+      .status(200)
+      .json({ success: true, message: "Password updated successfully" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Password update failed" });
   }
 };

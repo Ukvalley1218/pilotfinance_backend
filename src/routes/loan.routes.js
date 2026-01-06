@@ -11,42 +11,34 @@ import { protect } from "../middleware/auth.middleware.js";
 const router = express.Router();
 
 /**
- * @route   GET /api/loan OR /api/loan/loans
- * @desc    Get all loans (Handles frontend Dashboard fetch)
- * @access  Private
+ * All routes are prefixed with /api/loan in server.js
  */
+
+// --- GET ROUTES ---
 router.get("/", protect, getAllLoans);
-router.get("/loans", protect, getAllLoans); // Fixes 500 error for Dashboard fetch
-
-/**
- * @route   POST /api/loan
- * @desc    Create a new loan
- * @access  Private
- */
-router.post("/", protect, createLoan);
-
-/**
- * @route   GET /api/loan/:id
- * @desc    Get single loan by ID
- * @access  Private
- */
-router.get("/:id", protect, getLoanById);
-
-/**
- * @route   PUT /api/loan/:id
- * @desc    Update loan by ID
- * @access  Private
- */
-router.put("/:id", protect, updateLoan);
-
-/**
- * @route   DELETE /api/loan/:id
- * @desc    Delete loan by ID
- * @access  Private
- */
-router.delete("/:id", protect, deleteLoan);
-
-// Alias for frontend compatibility
+// Matches API.get("/loan/loans") from Dashboard and LoanApplications
+router.get("/loans", protect, getAllLoans);
 router.get("/all", protect, getAllLoans);
+
+// --- POST ROUTES ---
+router.post("/", protect, createLoan);
+// FIX: Matches API.post("/loan/loans") when clicking "New Application"
+router.post("/loans", protect, createLoan);
+
+// --- ID BASED ROUTES ---
+
+// Matches API.get("/loan/:id")
+router.get("/:id", protect, getLoanById);
+// Matches API.get("/loan/loans/:id") - Professional alias
+router.get("/loans/:id", protect, getLoanById);
+
+// Matches API.put("/loan/:id")
+router.put("/:id", protect, updateLoan);
+// FIX: Matches API.put("/loan/loans/:id") when clicking "Save Changes" in Edit Modal
+router.put("/loans/:id", protect, updateLoan);
+
+// DELETE
+router.delete("/:id", protect, deleteLoan);
+router.delete("/loans/:id", protect, deleteLoan);
 
 export default router;
