@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-// 1. UPDATED: Import dbOne from db.js (root) instead of server.js
 import { dbOne } from "../../db.js";
 
 const userSchema = new mongoose.Schema(
@@ -21,9 +20,30 @@ const userSchema = new mongoose.Schema(
       required: true,
       minlength: 6,
     },
+    // --- NEW FIELDS FOR SETTINGS PAGE ---
+    contact: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+    role: {
+      type: String,
+      enum: ["Super Admin", "Admin", "Editor"],
+      default: "Admin",
+    },
+    // Persistent Preferences for UI and Notifications
+    preferences: {
+      twoFactor: { type: Boolean, default: false },
+      loanUpdates: { type: Boolean, default: true },
+      partnerMessages: { type: Boolean, default: true },
+      systemAlerts: { type: Boolean, default: false },
+      theme: { type: String, enum: ["light", "dark"], default: "light" },
+      language: { type: String, default: "English" },
+      dashboardView: { type: String, default: "Dashboard" },
+    },
   },
   { timestamps: true }
 );
 
-// 2. Attach the schema to the correct database instance exported from db.js
+// Attach the schema to the correct database instance exported from db.js
 export const User = dbOne.model("User", userSchema);

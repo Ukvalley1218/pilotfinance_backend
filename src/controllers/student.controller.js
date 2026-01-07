@@ -1,96 +1,64 @@
 import { Student } from "../models/student.model.js";
+import { Notification } from "../models/notification.model.js"; // Import matching named export
 
 /**
  * @desc Create Student
- * @route POST /api/student
+ * @route POST /api/student AND POST /api/student/add_student
  */
 export const createStudent = async (req, res) => {
   try {
     const { name, email, phone } = req.body;
 
-    // Basic validation
+    // 1. Basic validation - Prevents empty records in database_one
     if (!name || !email || !phone) {
       return res.status(400).json({
         success: false,
-        message: "Name, email and phone are required",
+        message: "Name, email, and phone are required fields",
       });
     }
 
-    // Check duplicate email (Executes on dbOne via the model connection)
-    const existingStudent = await Student.findOne({ email });
+    // 2. Check duplicate email in the new database instance
+    const existingStudent = await Student.findOne({
+      email: email.toLowerCase(),
+    });
     if (existingStudent) {
       return res.status(409).json({
         success: false,
-        message: "Student with this email already exists",
+        message: "A student with this email is already registered",
       });
     }
 
-    const student = await Student.create(req.body);
+    // 3. Create record (The model handles the dbOne connection automatically)
+    const student = await Student.create({
+      ...req.body,
+      email: email.toLowerCase(),
+      createdBy: req.user._id, // Tracking which admin created the record
+    });
+
+    // --- NEW: Dynamic Notification Trigger ---
+    await Notification.create({
+      type: "info",
+      message: `New Student Registration: ${student.name}`,
+      link: `/admin/students/${student._id}`,
+    });
 
     return res.status(201).json({
       success: true,
-      message: "Student created successfully",
+      message: "Student record saved successfully",
       data: student,
     });
   } catch (error) {
-    console.error("Create Student Error:", error);
+    console.error("Critical Create Student Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Backend failed to save student. Check server logs.",
     });
   }
 };
 
 /**
- * @desc Update Student by ID
- * @route PUT /api/student/:id
- */
-export const updateStudent = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { email } = req.body;
-
-    const student = await Student.findById(id);
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        message: "Student not found",
-      });
-    }
-
-    if (email && email !== student.email) {
-      const emailExists = await Student.findOne({ email });
-      if (emailExists) {
-        return res.status(409).json({
-          success: false,
-          message: "Email already in use",
-        });
-      }
-    }
-
-    const updatedStudent = await Student.findByIdAndUpdate(
-      id,
-      { $set: req.body },
-      { new: true, runValidators: true }
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: "Student updated successfully",
-      data: updatedStudent,
-    });
-  } catch (error) {
-    console.error("Update Student Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-/**
- * @desc Get All Students (Pagination + Search + Filters)
- * @route GET /api/student
+ * @desc Get All Students (Pagination + Advanced Filters)
+ * @route GET /api/student AND GET /api/student/students
  */
 export const getAllStudents = async (req, res) => {
   try {
@@ -108,19 +76,17 @@ export const getAllStudents = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const filter = {};
 
-    // Syncing with Frontend Select options:
-    // Only apply filter if the value is not "All" or empty
-    if (status && !status.startsWith("All")) filter.status = status;
-    if (loan && !loan.startsWith("All")) filter.loan = loan;
-    if (country && !country.startsWith("All")) filter.country = country;
+    // Filter Logic: Matches frontend dropdowns
+    if (status && status !== "All Status") filter.status = status;
+    if (loan && loan !== "All Types") filter.loan = loan;
+    if (country && country !== "All Countries") filter.country = country;
 
+    // Search Logic: Matches the Search Bar in the Header
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
-        { phone: { $regex: search, $options: "i" } },
         { appId: { $regex: search, $options: "i" } },
-        { loanId: { $regex: search, $options: "i" } },
       ];
     }
 
@@ -133,6 +99,7 @@ export const getAllStudents = async (req, res) => {
 
     const totalRecords = await Student.countDocuments(filter);
 
+    // This data structure is exactly what your React .map() functions expect
     return res.status(200).json({
       success: true,
       pagination: {
@@ -146,25 +113,63 @@ export const getAllStudents = async (req, res) => {
     console.error("Get Students Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Failed to sync student list with dashboard",
     });
   }
 };
 
 /**
- * @desc Get Student by ID
+ * @desc Update Student
+ * @route PUT /api/student/:id
  */
-export const getStudentById = async (req, res) => {
+export const updateStudent = async (req, res) => {
   try {
-    const student = await Student.findById(req.params.id);
+    const { id } = req.params;
+
+    // Check if record exists before attempting update
+    const student = await Student.findById(id);
     if (!student) {
       return res
         .status(404)
         .json({ success: false, message: "Student not found" });
     }
+
+    const updatedStudent = await Student.findByIdAndUpdate(
+      id,
+      { $set: req.body },
+      { new: true, runValidators: true }
+    );
+
+    // --- NEW: Dynamic Notification Trigger for Update ---
+    await Notification.create({
+      type: "success",
+      message: `Profile Updated: ${updatedStudent.name}`,
+      link: `/admin/students/${updatedStudent._id}`,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated",
+      data: updatedStudent,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Update failed" });
+  }
+};
+
+/**
+ * @desc Get Single Student
+ */
+export const getStudentById = async (req, res) => {
+  try {
+    const student = await Student.findById(req.params.id);
+    if (!student)
+      return res.status(404).json({ success: false, message: "Not found" });
     return res.status(200).json({ success: true, data: student });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Invalid ID" });
+    return res
+      .status(400)
+      .json({ success: false, message: "Invalid ID format" });
   }
 };
 
@@ -173,14 +178,9 @@ export const getStudentById = async (req, res) => {
  */
 export const deleteStudent = async (req, res) => {
   try {
-    const student = await Student.findByIdAndDelete(req.params.id);
-    if (!student) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Student not found" });
-    }
-    return res.status(200).json({ success: true, message: "Student deleted" });
+    await Student.findByIdAndDelete(req.params.id);
+    return res.status(200).json({ success: true, message: "Record removed" });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Error deleting" });
+    return res.status(500).json({ success: false, message: "Deletion failed" });
   }
 };
