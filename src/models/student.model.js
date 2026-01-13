@@ -1,9 +1,13 @@
 import mongoose from "mongoose";
-// 1. UPDATED: Import dbOne from db.js (root) instead of server.js
-import { dbOne } from "../../db.js";
 
 const studentSchema = new mongoose.Schema(
   {
+    // --- THE BRIDGE FIELD ---
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User", // Links to the Master User Model
+      required: false, // Optional because an Admin might manually create a student
+    },
     name: {
       type: String,
       required: true,
@@ -19,6 +23,7 @@ const studentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    // --- APPLICATION DATA ---
     agency: {
       type: String,
       default: "",
@@ -47,6 +52,7 @@ const studentSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // --- LOAN SPECIFIC DATA ---
     loanId: {
       type: String,
       default: "",
@@ -75,5 +81,4 @@ const studentSchema = new mongoose.Schema(
   }
 );
 
-// 2. Attach the schema to the centralized database instance exported from db.js
-export const Student = dbOne.model("Student", studentSchema);
+export const Student = mongoose.model("Student", studentSchema);

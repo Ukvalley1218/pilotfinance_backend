@@ -1,5 +1,5 @@
-import { Document } from "../models/document.model.js";
-import { Notification } from "../models/notification.model.js";
+import Document from "../../models/document.model.js"; // Removed curly braces
+import { Notification } from "../../models/notification.model.js"; // Path for your unified folder
 import fs from "fs";
 import path from "path";
 
@@ -37,7 +37,7 @@ export const uploadDocument = async (req, res) => {
       });
     }
 
-    // Required for the model to prevent 500 error
+    // Your important category check - RESTORED
     if (!category) {
       return res.status(400).json({
         success: false,
@@ -55,7 +55,7 @@ export const uploadDocument = async (req, res) => {
       fileUrl,
     });
 
-    // --- Dynamic Notification Trigger ---
+    // Your specific notification link - RESTORED
     await Notification.create({
       type: "success",
       message: `New Document Uploaded: ${newDoc.name}`,
@@ -91,7 +91,7 @@ export const updateDocument = async (req, res) => {
         .json({ success: false, message: "Document not found" });
     }
 
-    // If a NEW file is uploaded, delete the OLD file from the server
+    // File replacement logic - RESTORED
     if (req.file) {
       const oldFilePath = path.join(process.cwd(), document.fileUrl);
       if (fs.existsSync(oldFilePath)) {
@@ -106,7 +106,7 @@ export const updateDocument = async (req, res) => {
 
     const updatedDoc = await document.save();
 
-    // --- Dynamic Notification Trigger for Update ---
+    // Your specific notification link - RESTORED
     await Notification.create({
       type: "info",
       message: `Document Modified: ${updatedDoc.name}`,
@@ -140,7 +140,7 @@ export const deleteDocument = async (req, res) => {
         .json({ success: false, message: "Document not found" });
     }
 
-    // Delete the physical file from the hard drive
+    // Physical file deletion - RESTORED
     if (doc.fileUrl) {
       const filePath = path.join(process.cwd(), doc.fileUrl);
       if (fs.existsSync(filePath)) {
@@ -150,7 +150,7 @@ export const deleteDocument = async (req, res) => {
 
     await Document.findByIdAndDelete(id);
 
-    // --- Dynamic Notification for Deletion ---
+    // Your specific notification link - RESTORED
     await Notification.create({
       type: "warning",
       message: `Document Deleted: ${doc.name}`,

@@ -1,5 +1,5 @@
-import { Partner } from "../models/partner.model.js";
-import { Notification } from "../models/notification.model.js"; // Import the notification model
+import { Partner } from "../../models/partner.model.js";
+import { Notification } from "../../models/notification.model.js";
 
 /**
  * @desc Create Partner
@@ -9,7 +9,7 @@ export const createPartner = async (req, res) => {
   try {
     const { name, email, phone } = req.body;
 
-    // 1. Backend Validation (Essential for DB One)
+    // 1. Backend Validation
     if (!name || !email || !phone) {
       return res.status(400).json({
         success: false,
@@ -18,10 +18,10 @@ export const createPartner = async (req, res) => {
       });
     }
 
-    // 2. Check for duplicate on the new database cluster
-    const existingPartner = await Partner.findOne({
-      email: email.toLowerCase(),
-    });
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 2. Check for duplicate email
+    const existingPartner = await Partner.findOne({ email: cleanEmail });
     if (existingPartner) {
       return res.status(409).json({
         success: false,
@@ -29,13 +29,13 @@ export const createPartner = async (req, res) => {
       });
     }
 
-    // 3. Save to database_one
+    // 3. Save to database
     const partner = await Partner.create({
       ...req.body,
-      email: email.toLowerCase(),
+      email: cleanEmail,
     });
 
-    // --- NEW: Dynamic Notification Trigger ---
+    // --- Dynamic Notification Trigger ---
     await Notification.create({
       type: "success",
       message: `New Partner Registered: ${partner.name}`,
@@ -96,7 +96,7 @@ export const updatePartner = async (req, res) => {
       { new: true, runValidators: true }
     );
 
-    // --- NEW: Dynamic Notification Trigger for Updates ---
+    // --- Dynamic Notification Trigger for Updates ---
     await Notification.create({
       type: "info",
       message: `Partner Profile Updated: ${updatedPartner.name}`,
@@ -118,14 +118,14 @@ export const updatePartner = async (req, res) => {
 };
 
 /**
- * @desc Get All Partners (Matches frontend fetchPartners call)
+ * @desc Get All Partners (With Advanced Pagination & Filtering)
  * @route GET /api/partner/partners
  */
 export const getAllPartners = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 100, // Increased limit for full directory view
+      limit = 100,
       search,
       status,
       businessType,

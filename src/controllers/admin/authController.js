@@ -1,9 +1,9 @@
-import bcrypt from "bcryptjs";
-import { User } from "../models/User.model.js";
-import { generateToken } from "../utils/generateToken.js";
+import User from "../../models/User.js";
+import { generateToken } from "../../utils/generateToken.js";
 
 /**
- * @desc Register User
+ * @desc    Register Admin/Staff
+ * @route   POST /api/admin/auth/register
  */
 export const registerUser = async (req, res) => {
   try {
@@ -15,52 +15,62 @@ export const registerUser = async (req, res) => {
         .json({ success: false, message: "All fields are required" });
     }
 
-    const existingUser = await User.findOne({ email });
+    const cleanEmail = email.toLowerCase().trim();
+
+    const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
       return res
         .status(409)
         .json({ success: false, message: "User already exists" });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
+    /**
+     * MASTER MODEL INTEGRATION:
+     * We pass the plain password. The pre-save hook in models/User.js
+     * automatically handles the bcrypt hashing.
+     */
     const user = await User.create({
-      name,
-      email,
-      password: hashedPassword,
+      fullName: name,
+      email: cleanEmail,
+      password,
+      role: "admin",
     });
 
     return res.status(201).json({
       success: true,
-      message: "User registered successfully",
+      message: "Admin registered successfully",
       data: {
         id: user._id,
-        name: user.name,
+        name: user.fullName,
         email: user.email,
         token: generateToken(user._id),
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("Register Error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error during registration" });
   }
 };
 
 /**
- * @desc Login User
+ * @desc    Login Admin/Staff
+ * @route   POST /api/admin/auth/login
  */
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
     if (!user) {
       return res
         .status(401)
         .json({ success: false, message: "Invalid credentials" });
     }
 
-    const isMatch = await bcrypt.compare(password, user.password);
+    // Using the comparePassword method defined in your User Schema
+    const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res
         .status(401)
@@ -72,18 +82,22 @@ export const loginUser = async (req, res) => {
       message: "Login successful",
       data: {
         id: user._id,
-        name: user.name,
+        name: user.fullName,
         email: user.email,
+        role: user.role,
         token: generateToken(user._id),
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server error" });
+    console.error("Login Error:", error);
+    return res
+      .status(500)
+      .json({ success: false, message: "Server error during login" });
   }
 };
 
 /**
- * @desc Get Logged-in User Profile (For Settings page initialization)
+ * @desc    Get Current Logged-in Profile
  */
 export const getProfile = async (req, res) => {
   try {
@@ -93,16 +107,16 @@ export const getProfile = async (req, res) => {
         .status(404)
         .json({ success: false, message: "User not found" });
     }
-
-    res.status(200).json({ success: true, data: user });
+    return res.status(200).json({ success: true, data: user });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server error" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch profile" });
   }
 };
 
 /**
- * @desc Update Logged-in User Profile & Preferences
- * Handles: Name, Email, Contact, Roles, and Toggles
+ * @desc    Update Name, Email, Contact, and Preferences
  */
 export const updateProfile = async (req, res) => {
   try {
@@ -115,23 +129,21 @@ export const updateProfile = async (req, res) => {
         .json({ success: false, message: "User not found" });
     }
 
-    // Email collision check
-    if (email && email !== user.email) {
-      const emailExists = await User.findOne({ email });
+    if (email && email.toLowerCase() !== user.email) {
+      const emailExists = await User.findOne({ email: email.toLowerCase() });
       if (emailExists) {
         return res
           .status(409)
           .json({ success: false, message: "Email already in use" });
       }
-      user.email = email;
+      user.email = email.toLowerCase();
     }
 
-    // Update fields only if they are provided in request
-    if (name) user.name = name;
-    if (contact) user.contact = contact;
-    if (role) user.role = role;
+    // Direct Mapping to Master User Schema fields
+    if (name) user.fullName = name;
+    if (contact) user.phone = contact;
+    if (role) user.role = role.toLowerCase();
 
-    // Nested preference updates (Merge old with new)
     if (preferences) {
       user.preferences = { ...user.preferences, ...preferences };
     }
@@ -143,45 +155,49 @@ export const updateProfile = async (req, res) => {
       message: "Profile updated successfully",
       data: {
         id: user._id,
-        name: user.name,
+        name: user.fullName,
         email: user.email,
-        contact: user.contact,
+        contact: user.phone,
         role: user.role,
         preferences: user.preferences,
       },
     });
   } catch (error) {
-    console.error("Update Profile Error:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Server error during update" });
+    console.error("Update Error:", error);
+    return res.status(500).json({ success: false, message: "Update failed" });
   }
 };
 
 /**
- * @desc Change User Password (For the Security section)
+ * @desc    Change User Password
  */
 export const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
 
     const user = await User.findById(req.user.id);
-    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
 
+    const isMatch = await user.comparePassword(currentPassword);
     if (!isMatch) {
       return res
         .status(401)
         .json({ success: false, message: "Current password incorrect" });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    user.password = await bcrypt.hash(newPassword, salt);
+    user.password = newPassword; // Pre-save hook will hash this
     await user.save();
 
-    res
+    return res
       .status(200)
       .json({ success: true, message: "Password updated successfully" });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Password update failed" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Password update failed" });
   }
 };

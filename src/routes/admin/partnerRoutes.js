@@ -5,8 +5,8 @@ import {
   getAllPartners,
   getPartnerById,
   deletePartner,
-} from "../controllers/partner.controller.js";
-import { protect } from "../middleware/auth.middleware.js";
+} from "../../controllers/admin/partnerController.js";
+import { protect } from "../../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
@@ -22,6 +22,7 @@ router.get("/", protect, getAllPartners);
 router.get("/partners", protect, getAllPartners);
 
 // --- POST ROUTES ---
+// Handles POST /api/partner
 router.post("/", protect, createPartner);
 
 // Handles POST /api/partner/partners (Registration)

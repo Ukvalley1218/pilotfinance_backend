@@ -1,13 +1,34 @@
 import mongoose from "mongoose";
-import { dbOne } from "../../db.js";
+
+// Removed dbOne import - using unified connection from src/db.js
 
 const transactionSchema = new mongoose.Schema(
   {
-    id: { type: String, required: true, unique: true }, // e.g., TXN-1001
-    type: { type: String, enum: ["Credit", "Debit"], required: true },
-    desc: { type: String, required: true },
-    subDesc: { type: String },
-    amount: { type: Number, required: true },
+    id: {
+      type: String,
+      required: true,
+      unique: true,
+    }, // e.g., TXN-1001
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    }, // Pro-tip: Linking transaction to a specific User
+    type: {
+      type: String,
+      enum: ["Credit", "Debit"],
+      required: true,
+    },
+    desc: {
+      type: String,
+      required: true,
+    },
+    subDesc: {
+      type: String,
+    },
+    amount: {
+      type: Number,
+      required: true,
+    },
     status: {
       type: String,
       enum: ["Completed", "Pending"],
@@ -17,4 +38,5 @@ const transactionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export const Transaction = dbOne.model("Transaction", transactionSchema);
+// Changed from dbOne.model to mongoose.model
+export const Transaction = mongoose.model("Transaction", transactionSchema);

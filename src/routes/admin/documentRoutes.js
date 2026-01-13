@@ -7,8 +7,8 @@ import {
   uploadDocument,
   updateDocument,
   deleteDocument,
-} from "../controllers/document.controller.js";
-import { protect } from "../middleware/auth.middleware.js";
+} from "../../controllers/admin/documentController.js";
+import { protect } from "../../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
@@ -23,28 +23,44 @@ const storage = multer.diskStorage({
     cb(null, dir);
   },
   filename: (req, file, cb) => {
-    // Unique filename with timestamp
+    // Unique filename with timestamp to prevent overwriting
     cb(null, `${Date.now()}-${file.originalname}`);
   },
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB Limit
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB Limit for Admin uploads
 });
 
 // --- ROUTES ---
 
-// GET /api/document/all
+/**
+ * @route   GET /api/document/all
+ * @desc    Fetch all documents uploaded by admins (Templates, Manuals, etc.)
+ * @access  Private
+ */
 router.get("/all", protect, getAllDocuments);
 
-// POST /api/document/upload
+/**
+ * @route   POST /api/document/upload
+ * @desc    Upload a new document to the admin library
+ * @access  Private
+ */
 router.post("/upload", protect, upload.single("file"), uploadDocument);
 
-// PUT /api/document/update/:id
+/**
+ * @route   PUT /api/document/update/:id
+ * @desc    Update/Replace an existing document file or metadata
+ * @access  Private
+ */
 router.put("/update/:id", protect, upload.single("file"), updateDocument);
 
-// DELETE /api/document/delete/:id
+/**
+ * @route   DELETE /api/document/delete/:id
+ * @desc    Remove a document from the server and database
+ * @access  Private
+ */
 router.delete("/delete/:id", protect, deleteDocument);
 
 export default router;

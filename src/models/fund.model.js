@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
-import { dbOne } from "../../db.js";
+
+// We removed the dbOne import because we use the unified connection now
 
 const fundSchema = new mongoose.Schema(
   {
@@ -16,4 +17,7 @@ const fundSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export const Fund = dbOne.model("Fund", fundSchema);
+// We use mongoose.model instead of dbOne.model
+const Fund = mongoose.model("Fund", fundSchema);
+
+export { Fund };

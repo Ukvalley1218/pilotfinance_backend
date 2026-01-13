@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import { dbOne } from "../../db.js";
 
 const documentSchema = new mongoose.Schema(
   {
@@ -17,24 +16,19 @@ const documentSchema = new mongoose.Schema(
         "General Uploads / Resources",
       ],
     },
-    version: {
-      type: String,
-      default: "v1.0",
-    },
+    version: { type: String, default: "v1.0" },
     status: {
       type: String,
       default: "Active",
-      enum: ["Active", "Archived"], // Prevents invalid status strings
+      enum: ["Active", "Archived"],
     },
     fileUrl: {
       type: String,
-      required: [true, "File path is required for database sync"],
+      required: [true, "File path is required"],
     },
   },
-  {
-    timestamps: true, // Automatically creates createdAt and updatedAt
-  }
+  { timestamps: true }
 );
 
-// This ensures the model uses the correct database cluster (database_one)
-export const Document = dbOne.model("Document", documentSchema);
+// Unified connection (No more dbOne.model)
+export default mongoose.model("Document", documentSchema);

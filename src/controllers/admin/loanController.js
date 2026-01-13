@@ -1,4 +1,4 @@
-import { Loan } from "../models/loan.model.js"; // Import matching named export
+import Loan from "../../models/loan.js"; // Unified Master Model
 
 /**
  * @desc Create Loan
@@ -23,7 +23,7 @@ export const createLoan = async (req, res) => {
       });
     }
 
-    // Creating loan using the dbOne connection defined in the model
+    // Creating loan using the unified connection
     const loan = await Loan.create(req.body);
 
     return res.status(201).json({
@@ -56,7 +56,7 @@ export const updateLoan = async (req, res) => {
       });
     }
 
-    // Logic to sync status changes with disbursement dates if needed
+    // Logic to sync status changes with disbursement dates
     if (req.body.status === "Disbursed" && !req.body.disbursementDate) {
       req.body.disbursementDate = new Date();
     }
@@ -113,7 +113,9 @@ export const getAllLoans = async (req, res) => {
 
     const sortOptions = { [sortBy]: order === "asc" ? 1 : -1 };
 
+    // Added .populate() so Admin can see which User (Student) belongs to the loan
     const loans = await Loan.find(filter)
+      .populate("userId", "fullName email")
       .sort(sortOptions)
       .skip(skip)
       .limit(parseInt(limit));
@@ -143,7 +145,10 @@ export const getAllLoans = async (req, res) => {
  */
 export const getLoanById = async (req, res) => {
   try {
-    const loan = await Loan.findById(req.params.id);
+    const loan = await Loan.findById(req.params.id).populate(
+      "userId",
+      "fullName email"
+    );
     if (!loan) {
       return res
         .status(404)

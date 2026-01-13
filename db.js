@@ -3,17 +3,22 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Create the main connection pool
-const mainConnection = mongoose.createConnection(process.env.MONGO_URI);
+const connectDB = async () => {
+  try {
+    const conn = await mongoose.connect(process.env.MONGO_URI, {
+      // These options ensure your connection is stable and professional
+      autoIndex: true,
+    });
 
-mainConnection.on("connected", () => {
-  console.log("✅ Main MongoDB Cluster Connected");
-});
+    console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
 
-mainConnection.on("error", (err) => {
-  console.error("❌ MongoDB Connection Error:", err);
-});
+    // If your Admin specifically needs 'database_one', we can access it like this:
+    // This allows you to keep using your 'dbOne' variable if needed
+    const dbOne = conn.connection.useDb("database_one", { useCache: true });
+  } catch (err) {
+    console.error("❌ MongoDB Connection Error:", err.message);
+    process.exit(1); // Stop the server if the DB is down
+  }
+};
 
-// useCache: true ensures that Mongoose reuses the database instance
-// instead of creating a new one every time this file is imported.
-export const dbOne = mainConnection.useDb("database_one", { useCache: true });
+export default connectDB;

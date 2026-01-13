@@ -3,71 +3,129 @@ import dotenv from "dotenv";
 import cors from "cors";
 import path from "path";
 import fs from "fs";
+import helmet from "helmet";
+import morgan from "morgan";
 import { fileURLToPath } from "url";
 
-// Import the Routes
-import authRoutes from "./src/routes/auth.routes.js";
-import studentRoutes from "./src/routes/student.routes.js";
-import partnerRoutes from "./src/routes/partner.routes.js";
-import loanRoutes from "./src/routes/loan.routes.js";
-import fundRoutes from "./src/routes/fund.routes.js";
-import reportRoutes from "./src/routes/report.routes.js";
-import documentRoutes from "./src/routes/document.routes.js";
-import financeRoutes from "./src/routes/finance.routes.js";
-import notificationRoutes from "./src/routes/notification.routes.js"; // NEW IMPORT
+// --- DATABASE CONNECTION ---
+import connectDB from "./db.js";
+
+// --- IMPORT ADMIN ROUTES ---
+import adminAuthRoutes from "./src/routes/admin/authRoutes.js";
+import studentRoutes from "./src/routes/admin/studentRoutes.js";
+import partnerRoutes from "./src/routes/admin/partnerRoutes.js";
+import adminLoanRoutes from "./src/routes/admin/loanRoutes.js";
+import fundRoutes from "./src/routes/admin/fundRoutes.js";
+import reportRoutes from "./src/routes/admin/reportRoutes.js";
+import adminDocRoutes from "./src/routes/admin/documentRoutes.js";
+import financeRoutes from "./src/routes/admin/financeRoutes.js";
+import adminNotificationRoutes from "./src/routes/admin/notificationRoutes.js";
+
+// --- IMPORT USER ROUTES ---
+import userAuthRoutes from "./src/routes/user/authRoutes.js";
+import userKycRoutes from "./src/routes/user/kycRoutes.js";
+import userDashboardRoutes from "./src/routes/user/dashboardRoutes.js";
+import userLoanRoutes from "./src/routes/user/loanRoutes.js";
+import userSignatureRoutes from "./src/routes/user/documentRoutes.js";
 
 dotenv.config();
 
-// Configuration for ES Modules __dirname
+// Initialize DB
+connectDB();
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 
-// --- AUTOMATIC FOLDER CREATION ---
-const uploadDir = path.join(__dirname, "uploads/documents");
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-  console.log("✅ Uploads directory created");
-}
+// --- AUTOMATIC DIRECTORY SETUP ---
+const uploadDirs = [
+  path.join(__dirname, "uploads/documents"),
+  path.join(__dirname, "uploads/avatars"),
+  path.join(__dirname, "uploads/signatures"),
+  path.join(__dirname, "uploads/kyc"),
+];
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-
-// --- STATIC FILES ---
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// API Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/student", studentRoutes);
-app.use("/api/partner", partnerRoutes);
-app.use("/api/loan", loanRoutes);
-app.use("/api/funds", fundRoutes);
-app.use("/api/reports", reportRoutes);
-app.use("/api/document", documentRoutes);
-app.use("/api/finance", financeRoutes);
-app.use("/api/notification", notificationRoutes); // NEW ROUTE REGISTERED
-
-app.get("/", (req, res) => {
-  res.send("Piolet Finance API Running 🚀");
+uploadDirs.forEach((dir) => {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    console.log(`📁 Directory verified/created: ${dir}`);
+  }
 });
 
-// Global Error Handler
+// --- MIDDLEWARE ---
+app.use(helmet({ crossOriginResourcePolicy: false }));
+
+// --- DYNAMIC CORS CONFIGURATION ---
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:5173",
+  "http://localhost:5174",
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) === -1) {
+        const msg =
+          "The CORS policy for this site does not allow access from the specified Origin.";
+        return callback(new Error(msg), false);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  })
+);
+
+// UPDATED: Increased limits for large JSON and Form data
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use(morgan("dev"));
+
+// --- STATIC ASSETS ---
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// --- 🚀 ADMIN PANEL ROUTES ---
+app.use("/api/admin/auth", adminAuthRoutes);
+app.use("/api/admin/student", studentRoutes);
+app.use("/api/admin/partner", partnerRoutes);
+app.use("/api/admin/loan", adminLoanRoutes);
+app.use("/api/admin/funds", fundRoutes);
+app.use("/api/admin/reports", reportRoutes);
+app.use("/api/admin/document", adminDocRoutes);
+app.use("/api/admin/finance", financeRoutes);
+app.use("/api/admin/notification", adminNotificationRoutes);
+
+// --- 📱 USER PANEL ROUTES ---
+app.use("/api/auth", userAuthRoutes);
+app.use("/api/kyc", userKycRoutes);
+app.use("/api/dashboard", userDashboardRoutes);
+app.use("/api/loans", userLoanRoutes);
+app.use("/api/signatures", userSignatureRoutes);
+
+app.get("/", (req, res) => res.send("Pilot Finance Unified API Running 🚀"));
+
+// --- GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
-  console.error("❌ Global Error:", err.stack);
+  console.error("❌ Server Error:", err.stack);
+
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(400).json({
+      success: false,
+      message:
+        "File too large. Maximum size allowed is 5MB-10MB depending on type.",
+    });
+  }
+
   res.status(500).json({
     success: false,
-    message: "Internal Server Error",
-    error: err.message,
+    message: err.message || "Internal Server Error",
   });
 });
 
-// Server Initialization
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(
-    `📁 Static files served from: ${path.join(__dirname, "uploads")}`
-  );
+  console.log(`🚀 Unified Server online on port ${PORT}`);
 });
