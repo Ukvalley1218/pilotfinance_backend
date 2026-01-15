@@ -1,10 +1,10 @@
 import jwt from "jsonwebtoken";
-import User from "../models/User.js"; // This uses your master User model
+import User from "../models/User.js"; // Unified User model
 
 export const protect = async (req, res, next) => {
   let token;
 
-  // 1. Check for token in various headers (Compatibility for both panels)
+  // 1. Check for token in various headers (Shared by User, Admin, and Recruitment panels)
   if (
     req.headers.authorization &&
     req.headers.authorization.startsWith("Bearer")
@@ -26,27 +26,38 @@ export const protect = async (req, res, next) => {
     // 3. Verify Token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    // 4. Extract User ID (Handles different payload structures)
+    // 4. Extract User ID (Handles payload from User, Admin, or Partner logins)
     const userId = decoded.id || (decoded.user ? decoded.user.id : null);
 
     if (!userId) {
       throw new Error("Invalid Token Payload: Missing User ID");
     }
 
-    // 5. Fetch User from Database (Shared Connection)
-    // This ensures the user is still active and exists in our unified DB
+    // 5. Fetch User from Database
+    // Using a try-catch inner block to catch specifically DB Timeouts
     req.user = await User.findById(userId).select("-password");
 
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: "User not found. Please login again.",
+        message: "User account no longer exists. Please login again.",
       });
     }
 
     next();
   } catch (error) {
     console.error("🔥 AUTH MIDDLEWARE ERROR:", error.message);
+
+    // Handle Database Connection/Timeout Errors
+    if (
+      error.message.includes("ETIMEDOUT") ||
+      error.message.includes("topology")
+    ) {
+      return res.status(500).json({
+        success: false,
+        message: "Database connection failed. Please check your network.",
+      });
+    }
 
     if (error.name === "TokenExpiredError") {
       return res.status(401).json({
@@ -63,8 +74,23 @@ export const protect = async (req, res, next) => {
 };
 
 /**
- * OPTIONAL: Admin-Only Middleware
- * You can use this for routes that ONLY staff/admins should see
+ * RECRUITMENT PARTNER MIDDLEWARE
+ * Ensures the logged-in user has the 'Partner' role
+ */
+export const partnerOnly = (req, res, next) => {
+  if (req.user && req.user.role === "Partner") {
+    next();
+  } else {
+    res.status(403).json({
+      success: false,
+      message: "Access denied: Recruitment Partners only",
+    });
+  }
+};
+
+/**
+ * ADMIN MIDDLEWARE
+ * Strictly for Admin and Super Admin roles
  */
 export const adminOnly = (req, res, next) => {
   if (

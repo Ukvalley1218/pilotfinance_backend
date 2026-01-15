@@ -9,8 +9,7 @@ export const getUserDocuments = async (req, res) => {
       return res.status(200).json({ success: true, data: { documents: [] } });
     }
 
-    // Professional touch: Map any old "Pending" statuses to "Sign Now"
-    // so the Frontend UI buttons look correct.
+    // Map any old "Pending" statuses to "Sign Now" for Frontend UI consistency
     const mappedDocs = data.documents.map((doc) => ({
       ...doc.toObject(),
       status: doc.status === "Pending" ? "Sign Now" : doc.status,
@@ -21,7 +20,7 @@ export const getUserDocuments = async (req, res) => {
       data: { ...data.toObject(), documents: mappedDocs },
     });
   } catch (err) {
-    console.error("Fetch Documents Error:", err); // Restored your log
+    console.error("Fetch Documents Error:", err);
     res.status(500).json({ success: false, msg: "Server Error" });
   }
 };
@@ -56,9 +55,8 @@ export const uploadDocument = async (req, res) => {
     const index = parseInt(docId) - 1;
 
     if (userDocs.documents[index]) {
-      // Before saving, ensure any other "Pending" docs are updated to "Sign Now"
-      // to avoid triggering the Mongoose Enum ValidationError on .save()
-      userDocs.documents.forEach((doc, i) => {
+      // Clean up statuses to avoid Mongoose Enum ValidationErrors on save
+      userDocs.documents.forEach((doc) => {
         if (doc.status === "Pending") {
           doc.status = "Sign Now";
         }
@@ -66,7 +64,11 @@ export const uploadDocument = async (req, res) => {
 
       // Update the target document
       userDocs.documents[index].status = "Uploaded";
-      // Updated path to reflect the unified structure
+
+      /**
+       * VITAL: This path must match the folder structure set in your
+       * uploadMiddleware destination and your express.static config.
+       */
       userDocs.documents[index].fileUrl = `/uploads/kyc/${req.file.filename}`;
       userDocs.documents[index].fileType = req.file.mimetype;
       userDocs.documents[index].uploadedAt = Date.now();
@@ -75,20 +77,19 @@ export const uploadDocument = async (req, res) => {
 
       return res.status(200).json({
         success: true,
-        msg: "Document synchronized successfully", // Your original msg
+        msg: "Document synchronized successfully",
         data: userDocs,
       });
     }
 
     res.status(404).json({ success: false, msg: "Invalid document slot" });
   } catch (err) {
-    console.error("Document Upload Error:", err); // Restored your log
+    console.error("Document Upload Error:", err);
 
-    // If it's a validation error, provide specific feedback - RESTORED
     if (err.name === "ValidationError") {
       return res.status(400).json({
         success: false,
-        msg: "Data format error. Please contact support.",
+        msg: "Data format error. Please check your document statuses.",
       });
     }
     res.status(500).json({ success: false, msg: "Internal Server Error" });

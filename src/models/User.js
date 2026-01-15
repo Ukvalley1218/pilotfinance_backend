@@ -14,12 +14,21 @@ const userSchema = new mongoose.Schema(
     },
     password: { type: String, required: true, minlength: 6 },
 
-    // --- ADMIN SPECIFIC FIELDS ---
+    // --- UPDATED ROLE ENUM ---
     role: {
       type: String,
-      enum: ["Super Admin", "Admin", "Editor", "User"], // Added 'User' to the enum
+      enum: [
+        "Super Admin",
+        "Admin",
+        "Editor",
+        "User",
+        "user",
+        "student",
+        "Partner",
+      ],
       default: "User",
     },
+
     preferences: {
       twoFactor: { type: Boolean, default: false },
       loanUpdates: { type: Boolean, default: true },
@@ -30,14 +39,15 @@ const userSchema = new mongoose.Schema(
       dashboardView: { type: String, default: "Dashboard" },
     },
 
-    // --- USER PANEL: AUTH & SECURITY ---
+    // --- AUTH & SECURITY ---
     otpCode: { type: String },
     otpExpires: { type: Date },
+    isEmailVerified: { type: Boolean, default: false },
     isPhoneVerified: { type: Boolean, default: false },
     ssnPin: { type: String },
 
-    // --- USER PANEL: PROFILE DATA ---
-    phone: { type: String, trim: true }, // Admin's 'contact' is now 'phone'
+    // --- SHARED PROFILE DATA ---
+    phone: { type: String, trim: true },
     alternateNumber: { type: String },
     dob: { type: String },
     country: { type: String, default: "Canada" },
@@ -47,6 +57,13 @@ const userSchema = new mongoose.Schema(
     gender: { type: String },
     maritalStatus: { type: String },
     avatar: { type: String, default: "" },
+
+    // --- RECRUITMENT PARTNER SPECIFIC DATA ---
+    companyName: { type: String },
+    businessType: { type: String }, // e.g., Individual, Agency
+    website: { type: String },
+    commissionRate: { type: Number, default: 0 },
+    referredStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
 
     // --- USER PANEL: KYC DATA ---
     kycData: {
@@ -70,7 +87,6 @@ const userSchema = new mongoose.Schema(
       submittedAt: { type: Date, default: Date.now },
     },
 
-    // --- SYSTEM STATUS ---
     kycStatus: {
       type: String,
       enum: ["Pending", "Verified", "Rejected"],
@@ -80,22 +96,19 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// --- PASSWORD ENCRYPTION ---
+// --- PASSWORD ENCRYPTION HOOK (FIXED) ---
+// We remove 'next' as a parameter because this is an async function.
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) return;
-  try {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-  } catch (error) {
-    throw error;
-  }
+
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
 });
 
-// Method to compare password
+// Method to verify password during login
 userSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
 
-// Exporting as default for the unified project
 const User = mongoose.model("User", userSchema);
 export default User;

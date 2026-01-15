@@ -11,26 +11,36 @@ const ensureDir = (dirPath) => {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Determine folder based on the route or fieldname
-    // KYC goes to uploads/kyc, Admin docs go to uploads/documents
+    // Default path
     let uploadPath = "uploads/documents/";
 
-    if (file.fieldname === "kyc" || req.baseUrl.includes("user")) {
+    // LOGIC FIX: Check for both 'user' routes AND 'signatures' routes
+    // This ensures files from Digital Signature page go to the KYC folder as expected by your DB
+    if (
+      file.fieldname === "kyc" ||
+      req.baseUrl.includes("user") ||
+      req.baseUrl.includes("kyc") ||
+      req.baseUrl.includes("signatures")
+    ) {
       uploadPath = "uploads/kyc/";
+    }
+
+    // Optional: Handle avatars specifically if needed
+    if (file.fieldname === "avatar" || req.baseUrl.includes("profile")) {
+      uploadPath = "uploads/avatars/";
     }
 
     ensureDir(uploadPath);
     cb(null, uploadPath);
   },
   filename: (req, file, cb) => {
-    // Standardized filename: timestamp-originalName
-    // If user is logged in, we prefix their ID for easy tracking
-    const userId = req.user ? `${req.user._id}-` : "";
-    const uniqueName = `${userId}${Date.now()}-${file.originalname.replace(
-      /\s+/g,
-      "_"
-    )}`;
-    cb(null, uniqueName);
+    // Generate a clean, unique name
+    const prefix = file.fieldname === "document" ? "SIG-" : ""; // Identify signatures easily
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const extension = path.extname(file.originalname);
+
+    // We clean the filename to remove spaces/special characters
+    cb(null, `${prefix}${uniqueSuffix}${extension}`);
   },
 });
 
@@ -57,5 +67,5 @@ const fileFilter = (req, file, cb) => {
 export const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: 50 * 1024 * 1024 }, // Increased to 50MB to match your server.js limit
 });

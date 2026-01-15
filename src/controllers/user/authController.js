@@ -23,7 +23,6 @@ export const getMe = async (req, res) => {
 // --- 2. UPDATE PROFILE TEXT DATA ---
 export const updateProfile = async (req, res) => {
   try {
-    // Mapping to Master User Model fields
     const fieldsToUpdate = [
       "fullName",
       "phone",
@@ -60,7 +59,6 @@ export const updateAvatar = async (req, res) => {
     if (!req.file)
       return res.status(400).json({ success: false, msg: "No file uploaded" });
 
-    // Construct the full URL for the frontend
     const avatarPath = `${req.protocol}://${req.get("host")}/uploads/avatars/${
       req.file.filename
     }`;
@@ -85,12 +83,11 @@ export const register = async (req, res) => {
     if (userExists)
       return res.status(400).json({ msg: "Email already registered" });
 
-    // Rely on pre-save hook for hashing
     const user = new User({
       fullName,
       email: cleanEmail,
       password,
-      role: "user",
+      role: "User", // Matches your updated Enum ["Super Admin", "Admin", "Editor", "User"]
     });
     await user.save();
 
@@ -144,10 +141,11 @@ export const googleLogin = async (req, res) => {
       user = new User({
         fullName: googleUser.name,
         email: googleUser.email.toLowerCase().trim(),
-        password: Math.random().toString(36).slice(-10), // Random password for social logins
+        password: Math.random().toString(36).slice(-10),
         avatar: googleUser.picture,
         isEmailVerified: true,
-        role: "user",
+        isPhoneVerified: true, // Auto-verify Google users to prevent redirect loop
+        role: "User",
       });
       await user.save();
     }
@@ -169,18 +167,14 @@ export const forgotPassword = async (req, res) => {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.otpCode = otp;
-    user.otpExpires = new Date(Date.now() + 10 * 60000); // 10 Min expiry
+    user.otpExpires = new Date(Date.now() + 10 * 60000);
     await user.save();
 
     await transporter.sendMail({
       from: `"Pilot Finance" <${process.env.EMAIL_USER}>`,
       to: user.email,
       subject: "Password Reset OTP",
-      html: `<div style="font-family: Arial, sans-serif; text-align:center;">
-               <h2>Password Reset Request</h2>
-               <p>Your OTP code is:</p>
-               <h1 style="color: #4A90E2;">${otp}</h1>
-             </div>`,
+      html: `<h2>OTP: ${otp}</h2>`,
     });
     return res.status(200).json({ success: true, msg: "OTP sent" });
   } catch (err) {
@@ -200,7 +194,7 @@ export const resetPassword = async (req, res) => {
 
     if (!user) return res.status(400).json({ msg: "Invalid or expired OTP" });
 
-    user.password = newPassword; // Pre-save hook will hash this
+    user.password = newPassword;
     user.otpCode = undefined;
     user.otpExpires = undefined;
     await user.save();
@@ -250,7 +244,10 @@ export const verifyOTP = async (req, res) => {
       return res.status(400).json({ msg: "Invalid or expired code" });
     }
 
-    user.isEmailVerified = true; // Matching Master Model field
+    // SYNC: Set both fields to true to satisfy Frontend checks
+    user.isEmailVerified = true;
+    user.isPhoneVerified = true;
+
     user.otpCode = undefined;
     user.otpExpires = undefined;
     await user.save();
