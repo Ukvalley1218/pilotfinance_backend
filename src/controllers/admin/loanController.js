@@ -1,47 +1,46 @@
-import Loan from "../../models/loan.js"; // Unified Master Model
+import Loan from "../../models/loan.js"; // Pointing to the unified model
 
 /**
- * @desc Create Loan
+ * @desc Create Loan (Triggered from Partner/User Panel)
  * @route POST /api/loan
  */
 export const createLoan = async (req, res) => {
   try {
-    const { loanId, requestedAmount } = req.body;
+    const { userId, totalAmount, requestedAmount } = req.body;
 
-    if (!loanId || !requestedAmount) {
+    // Bridge the gap between naming conventions
+    const finalAmount = totalAmount || requestedAmount;
+
+    if (!userId || !finalAmount) {
       return res.status(400).json({
         success: false,
-        message: "Loan ID and requested amount are required",
+        message: "User ID and loan amount are required",
       });
     }
 
-    const existingLoan = await Loan.findOne({ loanId });
-    if (existingLoan) {
-      return res.status(409).json({
-        success: false,
-        message: "Loan with this ID already exists",
-      });
-    }
-
-    // Creating loan using the unified connection
-    const loan = await Loan.create(req.body);
+    // Creating loan using the unified model
+    // We explicitly map finalAmount to totalAmount to ensure DB consistency
+    const loan = await Loan.create({
+      ...req.body,
+      totalAmount: finalAmount,
+    });
 
     return res.status(201).json({
       success: true,
-      message: "Loan created successfully",
+      message: "Loan application submitted successfully",
       data: loan,
     });
   } catch (error) {
     console.error("Create Loan Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Internal server error during application",
     });
   }
 };
 
 /**
- * @desc Update Loan (Used for Approvals/Verification)
+ * @desc Update Loan (Used by Admin for Approvals/Verification)
  * @route PUT /api/loan/:id
  */
 export const updateLoan = async (req, res) => {
@@ -52,11 +51,11 @@ export const updateLoan = async (req, res) => {
     if (!loan) {
       return res.status(404).json({
         success: false,
-        message: "Loan not found",
+        message: "Loan record not found",
       });
     }
 
-    // Logic to sync status changes with disbursement dates
+    // Logic: Automatically set disbursement date when status is changed to Disbursed
     if (req.body.status === "Disbursed" && !req.body.disbursementDate) {
       req.body.disbursementDate = new Date();
     }
@@ -64,35 +63,34 @@ export const updateLoan = async (req, res) => {
     const updatedLoan = await Loan.findByIdAndUpdate(
       id,
       { $set: req.body },
-      { new: true, runValidators: true }
-    );
+      { new: true, runValidators: true },
+    ).populate("userId", "fullName email");
 
     return res.status(200).json({
       success: true,
-      message: "Loan updated successfully",
+      message: "Loan status updated successfully",
       data: updatedLoan,
     });
   } catch (error) {
     console.error("Update Loan Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Failed to update loan status",
     });
   }
 };
 
 /**
- * @desc Get All Loans (Used for Reports & Analytics)
- * @route GET /api/loan
+ * @desc Get All Loans (Dynamic sync for Admin Dashboard)
+ * @route GET /api/loan/loans
  */
 export const getAllLoans = async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 10,
+      limit = 50,
       search,
       status,
-      type,
       sortBy = "createdAt",
       order = "desc",
     } = req.query;
@@ -101,19 +99,21 @@ export const getAllLoans = async (req, res) => {
     const filter = {};
 
     if (status && status !== "All Status") filter.status = status;
-    if (type && type !== "All Types") filter.type = type;
 
     if (search) {
       filter.$or = [
         { loanId: { $regex: search, $options: "i" } },
-        { approvedBy: { $regex: search, $options: "i" } },
         { status: { $regex: search, $options: "i" } },
       ];
     }
 
-    const sortOptions = { [sortBy]: order === "asc" ? 1 : -1 };
+    const sortOptions = { [sortBy]: order === "desc" ? -1 : 1 };
 
-    // Added .populate() so Admin can see which User (Student) belongs to the loan
+    /**
+     * DYNAMIC SYNC LOGIC:
+     * 1. .populate("userId") ensures we get the Student Name for the Admin Dashboard.
+     * 2. Sorting by createdAt DESC ensures new requests from Partners appear at the top.
+     */
     const loans = await Loan.find(filter)
       .populate("userId", "fullName email")
       .sort(sortOptions)
@@ -135,20 +135,20 @@ export const getAllLoans = async (req, res) => {
     console.error("Get Loans Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Internal server error",
+      message: "Internal server error fetching applications",
     });
   }
 };
 
 /**
- * @desc Get Loan by ID
+ * @desc Get Single Loan by ID
  */
 export const getLoanById = async (req, res) => {
   try {
-    const loan = await Loan.findById(req.params.id).populate(
-      "userId",
-      "fullName email"
-    );
+    const loan = await Loan.findById(req.params.id)
+      .populate("userId", "fullName email phone address")
+      .populate("partnerId", "companyName fullName email");
+
     if (!loan) {
       return res
         .status(404)
@@ -156,7 +156,7 @@ export const getLoanById = async (req, res) => {
     }
     return res.status(200).json({ success: true, data: loan });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Invalid ID" });
+    return res.status(500).json({ success: false, message: "Invalid Loan ID" });
   }
 };
 
@@ -171,8 +171,12 @@ export const deleteLoan = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Loan not found" });
     }
-    return res.status(200).json({ success: true, message: "Deleted" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Loan record deleted" });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Error deleting" });
+    return res
+      .status(500)
+      .json({ success: false, message: "Error deleting record" });
   }
 };

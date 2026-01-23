@@ -1,5 +1,6 @@
 import express from "express";
 import { protect } from "../../middlewares/authMiddleware.js";
+import { Student } from "../../models/student.model.js";
 import {
   createStudent,
   deleteStudent,
@@ -11,52 +12,42 @@ import {
 const router = express.Router();
 
 /**
- * All routes are prefixed with /api/admin/student in server.js
- * These routes manage the unified "User = Student" records.
+ * PREFIX: /api/admin/student
  */
 
-// --- GET ROUTES ---
+// --- 0. MAINTENANCE ROUTES (Must be at the TOP) ---
+router.delete("/maintenance/clear-data", protect, async (req, res) => {
+  try {
+    const result = await Student.deleteMany({});
+    res.status(200).json({
+      success: true,
+      message: `Database Cleared. ${result.deletedCount} records removed.`,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
-// Handles GET /api/admin/student/
+// --- 1. DATA AGGREGATION ROUTES ---
+router.get("/all", protect, getAllStudents);
+router.get("/students", protect, getAllStudents);
 router.get("/", protect, getAllStudents);
 
-// FIX: Handles GET /api/admin/student/all
-// Matches the updated Dashboard.jsx and Reports.jsx fetch calls
-router.get("/all", protect, getAllStudents);
+// --- 2. VERIFICATION & PROFILE ROUTES ---
+// ADDED THIS LINE to fix your 404 error:
+router.put("/update/:id", protect, updateStudent);
 
-// Handles GET /api/admin/student/students
-// Used for the main directory table in the Admin Dashboard
-router.get("/students", protect, getAllStudents);
-
-// --- POST ROUTES ---
-
-// Handles POST /api/admin/student/
-router.post("/", protect, createStudent);
-
-// FIX: Handles POST /api/admin/student/add
-// Clean endpoint for adding records
-router.post("/add", protect, createStudent);
-
-// Handles POST /api/admin/student/add_student
-router.post("/add_student", protect, createStudent);
-
-// --- ID BASED ROUTES ---
-
-// Handles GET /api/admin/student/:id
+// Standard ID lookups
 router.get("/:id", protect, getStudentById);
-
-// FIX: Handles GET /api/admin/student/students/:id
-// This fixes the 404 in StudentDetails.jsx when clicking "View Profile"
-router.get("/students/:id", protect, getStudentById);
-
-// Handles PUT /api/admin/student/:id
 router.put("/:id", protect, updateStudent);
 
-// FIX: Handles PUT /api/admin/student/students/:id
-// Ensures that if you edit details from the profile page, it works
+// Support for nested paths
+router.get("/students/:id", protect, getStudentById);
 router.put("/students/:id", protect, updateStudent);
 
-// Handles DELETE /api/admin/student/:id
+// --- 3. MANAGEMENT ROUTES ---
+router.post("/add", protect, createStudent);
+router.post("/", protect, createStudent);
 router.delete("/:id", protect, deleteStudent);
 
 export default router;

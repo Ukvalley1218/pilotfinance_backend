@@ -1,4 +1,5 @@
 import User from "../../models/User.js";
+import { Student } from "../../models/student.model.js"; // IMPORT STUDENT MODEL
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import transporter from "../../utils/mail.js";
@@ -9,7 +10,7 @@ import fetch from "node-fetch";
 export const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select(
-      "-password -otpCode -otpExpires"
+      "-password -otpCode -otpExpires",
     );
     if (!user)
       return res.status(404).json({ success: false, msg: "User not found" });
@@ -42,8 +43,14 @@ export const updateProfile = async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
       { $set: updateObj },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     ).select("-password");
+
+    // SYNC: Update the corresponding Student model so Admin sees changes
+    await Student.findOneAndUpdate(
+      { userId: req.user.id },
+      { $set: { name: updateObj.fullName, phone: updateObj.phone } },
+    );
 
     return res
       .status(200)
@@ -71,10 +78,10 @@ export const updateAvatar = async (req, res) => {
   }
 };
 
-// --- 4. REGISTER ---
+// --- 4. REGISTER (SYNCED WITH ADMIN) ---
 export const register = async (req, res) => {
   try {
-    const { fullName, email, password } = req.body;
+    const { fullName, email, password, phone } = req.body;
     if (!fullName || !email || !password)
       return res.status(400).json({ msg: "All fields are required" });
 
@@ -83,25 +90,45 @@ export const register = async (req, res) => {
     if (userExists)
       return res.status(400).json({ msg: "Email already registered" });
 
+    // A. Create User record (Auth)
     const user = new User({
       fullName,
       email: cleanEmail,
       password,
-      role: "User", // Matches your updated Enum ["Super Admin", "Admin", "Editor", "User"]
+      phone,
+      role: "student",
     });
     await user.save();
 
+    // B. Create Student record (Admin Visibility Bridge)
+    await Student.create({
+      userId: user._id,
+      name: fullName,
+      email: cleanEmail,
+      phone: phone || "Not Provided",
+      status: "Pending",
+    });
+
     const token = generateToken(user._id);
-    return res
-      .status(201)
-      .json({ success: true, token, userId: user._id, user });
+    return res.status(201).json({
+      success: true,
+      token,
+      userId: user._id,
+      user: {
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        isPhoneVerified: user.isPhoneVerified,
+      },
+    });
   } catch (err) {
-    console.error(err);
+    console.error("REGISTRATION SYNC ERROR:", err);
     return res.status(500).json({ msg: "Registration failed" });
   }
 };
 
-// --- 5. LOGIN ---
+// --- 5. LOGIN (Updated for Smart Redirect) ---
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -115,18 +142,31 @@ export const login = async (req, res) => {
     if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
 
     const token = generateToken(user._id);
-    return res.status(200).json({ success: true, token, user });
+
+    // Explicitly returning isPhoneVerified so frontend can redirect to Dashboard
+    return res.status(200).json({
+      success: true,
+      token,
+      user: {
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        isPhoneVerified: user.isPhoneVerified,
+        avatar: user.avatar,
+      },
+    });
   } catch (err) {
     return res.status(500).json({ msg: "Login error" });
   }
 };
 
-// --- 6. DYNAMIC GOOGLE LOGIN ---
+// --- 6. GOOGLE LOGIN (SYNCED WITH ADMIN) ---
 export const googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
     const googleRes = await fetch(
-      `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${token}`
+      `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${token}`,
     );
     const googleUser = await googleRes.json();
 
@@ -138,22 +178,42 @@ export const googleLogin = async (req, res) => {
     });
 
     if (!user) {
+      // Create new User
       user = new User({
         fullName: googleUser.name,
         email: googleUser.email.toLowerCase().trim(),
         password: Math.random().toString(36).slice(-10),
         avatar: googleUser.picture,
         isEmailVerified: true,
-        isPhoneVerified: true, // Auto-verify Google users to prevent redirect loop
-        role: "User",
+        isPhoneVerified: true, // Google accounts verified by default
+        role: "student",
       });
       await user.save();
+
+      // Create linked Student for Admin Panel
+      await Student.create({
+        userId: user._id,
+        name: googleUser.name,
+        email: googleUser.email.toLowerCase().trim(),
+        status: "Pending",
+      });
     }
 
     const jwtToken = generateToken(user._id);
-    return res.status(200).json({ success: true, token: jwtToken, user });
+    return res.status(200).json({
+      success: true,
+      token: jwtToken,
+      user: {
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        isPhoneVerified: user.isPhoneVerified,
+        avatar: user.avatar,
+      },
+    });
   } catch (err) {
-    console.error("GOOGLE LOGIN ERROR:", err);
+    console.error("GOOGLE LOGIN SYNC ERROR:", err);
     return res.status(500).json({ msg: "Google Login Error" });
   }
 };
@@ -215,7 +275,7 @@ export const sendOTP = async (req, res) => {
     const user = await User.findOneAndUpdate(
       { email: email.toLowerCase().trim() },
       { otpCode: otp, otpExpires: new Date(Date.now() + 10 * 60000) },
-      { new: true }
+      { new: true },
     );
 
     if (!user) return res.status(404).json({ msg: "User not found" });
@@ -244,7 +304,6 @@ export const verifyOTP = async (req, res) => {
       return res.status(400).json({ msg: "Invalid or expired code" });
     }
 
-    // SYNC: Set both fields to true to satisfy Frontend checks
     user.isEmailVerified = true;
     user.isPhoneVerified = true;
 
@@ -253,7 +312,17 @@ export const verifyOTP = async (req, res) => {
     await user.save();
 
     const token = generateToken(user._id);
-    return res.status(200).json({ success: true, token, user });
+    return res.status(200).json({
+      success: true,
+      token,
+      user: {
+        _id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        isPhoneVerified: user.isPhoneVerified,
+      },
+    });
   } catch (err) {
     return res.status(500).json({ msg: "Verification failed" });
   }

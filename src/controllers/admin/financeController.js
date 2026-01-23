@@ -1,4 +1,4 @@
-import { Transaction } from "../../models/transaction.model.js";
+import Transaction from "../../models/transaction.model.js";
 
 // 1. GET LEDGER
 export const getLedger = async (req, res) => {

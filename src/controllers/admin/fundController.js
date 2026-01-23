@@ -1,5 +1,5 @@
 import { Fund } from "../../models/fund.model.js";
-import { Transaction } from "../../models/transaction.model.js";
+import Transaction from "../../models/transaction.model.js";
 
 /**
  * @desc Get all funds

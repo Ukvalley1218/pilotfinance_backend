@@ -63,7 +63,13 @@ const userSchema = new mongoose.Schema(
     businessType: { type: String }, // e.g., Individual, Agency
     website: { type: String },
     commissionRate: { type: Number, default: 0 },
-    referredStudents: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+
+    // --- LINKED STUDENTS IMPROVEMENT ---
+    // Refers to the "Student" model which contains loan and app logic.
+    // This allows partners to track specific application progress.
+    referredStudents: [
+      { type: mongoose.Schema.Types.ObjectId, ref: "Student" },
+    ],
 
     // --- USER PANEL: KYC DATA ---
     kycData: {
@@ -93,11 +99,10 @@ const userSchema = new mongoose.Schema(
       default: "Pending",
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-// --- PASSWORD ENCRYPTION HOOK (FIXED) ---
-// We remove 'next' as a parameter because this is an async function.
+// --- PASSWORD ENCRYPTION HOOK ---
 userSchema.pre("save", async function () {
   if (!this.isModified("password")) return;
 

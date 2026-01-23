@@ -1,42 +1,16 @@
 import express from "express";
-import multer from "multer";
 import path from "path";
 
 // 1. IMPORT MIDDLEWARE & CONTROLLER
-import { protect } from "../../middlewares/authMiddleware.js";
+// Changed import source to authMiddleware and name to adminOnly to match your file
+import { protect, adminOnly } from "../../middlewares/authMiddleware.js";
+// Using the centralized upload middleware from your multer file
+import { upload } from "../../middlewares/uploadMiddleware.js";
 import * as documentController from "../../controllers/user/documentController.js";
 
 const router = express.Router();
 
-// 2. MULTER CONFIGURATION
-const storage = multer.diskStorage({
-  destination: "./uploads/",
-  filename: function (req, file, cb) {
-    // Saves as: SIG-TIMESTAMP-RANDOM.ext for better organization
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, `SIG-${uniqueSuffix}${path.extname(file.originalname)}`);
-  },
-});
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    const filetypes = /jpeg|jpg|png|pdf/;
-    const extname = filetypes.test(
-      path.extname(file.originalname).toLowerCase()
-    );
-    const mimetype = filetypes.test(file.mimetype);
-
-    if (extname && mimetype) {
-      return cb(null, true);
-    } else {
-      cb(new Error("Only .pdf, .png, .jpg and .jpeg format allowed!"));
-    }
-  },
-});
-
-// 3. ROUTES
+// --- 2. ROUTES ---
 
 /**
  * @route   GET /api/signatures
@@ -53,8 +27,21 @@ router.get("/", protect, documentController.getUserDocuments);
 router.put(
   "/upload/:docId",
   protect,
-  upload.single("document"),
-  documentController.uploadDocument
+  upload.single("document"), // Using the centralized upload logic
+  documentController.uploadDocument,
+);
+
+/**
+ * @route   GET /api/signatures/admin/all
+ * @desc    Fetch all digital signatures from all users for the Admin Audit Center
+ * @access  Private (Admins Only)
+ * @note    This route fixes the 404 error in the Admin Panel
+ */
+router.get(
+  "/admin/all",
+  protect,
+  adminOnly, // Updated to match the export in your authMiddleware.js
+  documentController.getAllSignaturesAdmin,
 );
 
 export default router;

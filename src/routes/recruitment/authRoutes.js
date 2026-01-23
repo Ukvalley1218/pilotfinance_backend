@@ -6,7 +6,9 @@ import { protect } from "../../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-// --- 1. MULTER STORAGE CONFIGURATION ---
+// --- 1. MULTER CONFIGURATIONS ---
+
+// A. General Partner Documents (KYC)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "./uploads/partners");
@@ -16,10 +18,20 @@ const storage = multer.diskStorage({
   },
 });
 
+// B. Profile Avatars
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, "./uploads/avatars");
+  },
+  filename: (req, file, cb) => {
+    cb(null, `AVATAR-${Date.now()}${path.extname(file.originalname)}`);
+  },
+});
+
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|pdf/;
   const isMatch = allowedTypes.test(
-    path.extname(file.originalname).toLowerCase()
+    path.extname(file.originalname).toLowerCase(),
   );
   if (isMatch) return cb(null, true);
   cb(new Error("Only images (jpeg, jpg, png) and PDFs are allowed"));
@@ -28,26 +40,31 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit per file
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024 },
 });
 
 // ---------- RECRUITMENT AUTH ROUTES (Public) ----------
 router.post("/register", recruitmentController.registerPartner);
 router.post("/login", recruitmentController.login);
 
-// ---------- RECRUITMENT DASHBOARD & PROFILE (Private) ----------
+// ---------- RECRUITMENT PRIVATE ROUTES (Requires Token) ----------
 
-// Get current partner profile
+// 1. Profile & Account Management
 router.get("/me", protect, recruitmentController.getMe);
 
-// Added: Get dynamic dashboard stats (Total Commission, Active Students, etc.)
-router.get(
-  "/dashboard-stats",
+router.put(
+  "/update-me",
   protect,
-  recruitmentController.getDashboardStats
+  uploadAvatar.single("avatar"),
+  recruitmentController.updateMe,
 );
 
-// Update profile handles the 3-step Registration profile data with files
 router.put(
   "/update-profile",
   protect,
@@ -61,7 +78,45 @@ router.put(
     { name: "destinations", maxCount: 1 },
     { name: "categories", maxCount: 1 },
   ]),
-  recruitmentController.updatePartnerProfile
+  recruitmentController.updatePartnerProfile,
 );
+
+// 2. Dashboard, Stats & Activity
+router.get(
+  "/dashboard-stats",
+  protect,
+  recruitmentController.getDashboardStats,
+);
+router.get("/activity", protect, recruitmentController.getActivityLog);
+
+// 3. Legal & Agreements
+router.get("/agreement", protect, recruitmentController.getAgreementDetails);
+router.post("/agreement/sign", protect, recruitmentController.signAgreement);
+
+// --- ADMIN DATA ROUTE ---
+router.get("/partners", protect, recruitmentController.getAllPartners);
+
+// 4. Student Management & LOAN LEDGER SYNC
+// This is the core logic for the "Selection" system
+router.get(
+  "/available-students",
+  protect,
+  recruitmentController.getAvailableStudents,
+);
+
+router.post("/link-user", protect, recruitmentController.linkStudentToPartner);
+
+// Fetch students currently linked to this partner
+router.get("/my-students", protect, recruitmentController.getReferredStudents);
+
+// THE FINAL FIX: Fetch loan ledger filtered for this partner
+// Frontend should now hit: /api/recruitment/loans
+router.get("/loans", protect, recruitmentController.getPartnerLoans);
+
+// Legacy/Internal student addition
+// router.post("/add-student", protect, recruitmentController.addStudent);
+
+// 5. Wallet & Transactions
+router.get("/wallet", protect, recruitmentController.getWalletData);
 
 export default router;

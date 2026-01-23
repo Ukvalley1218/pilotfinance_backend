@@ -1,6 +1,6 @@
 import UserDocuments from "../../models/UserDocuments.js";
 
-// --- 1. FETCH ALL SAVED DOCUMENTS ---
+// --- 1. FETCH ALL SAVED DOCUMENTS (For Individual User) ---
 export const getUserDocuments = async (req, res) => {
   try {
     const data = await UserDocuments.findOne({ userId: req.user.id });
@@ -25,7 +25,7 @@ export const getUserDocuments = async (req, res) => {
   }
 };
 
-// --- 2. UPLOAD & PERSIST DOCUMENT ---
+// --- 2. UPLOAD & PERSIST DOCUMENT (For Individual User) ---
 export const uploadDocument = async (req, res) => {
   try {
     const { docId } = req.params;
@@ -66,10 +66,14 @@ export const uploadDocument = async (req, res) => {
       userDocs.documents[index].status = "Uploaded";
 
       /**
-       * VITAL: This path must match the folder structure set in your
-       * uploadMiddleware destination and your express.static config.
+       * VITAL FIX: Dynamic Folder Path
+       * Your multer.js logic puts 'SIG-' files in the 'signatures' folder.
+       * This code ensures the Database points to the CORRECT physical folder.
        */
-      userDocs.documents[index].fileUrl = `/uploads/kyc/${req.file.filename}`;
+      const folder = req.file.filename.startsWith("SIG") ? "signatures" : "kyc";
+
+      userDocs.documents[index].fileUrl =
+        `/uploads/${folder}/${req.file.filename}`;
       userDocs.documents[index].fileType = req.file.mimetype;
       userDocs.documents[index].uploadedAt = Date.now();
 
@@ -85,13 +89,29 @@ export const uploadDocument = async (req, res) => {
     res.status(404).json({ success: false, msg: "Invalid document slot" });
   } catch (err) {
     console.error("Document Upload Error:", err);
-
-    if (err.name === "ValidationError") {
-      return res.status(400).json({
-        success: false,
-        msg: "Data format error. Please check your document statuses.",
-      });
-    }
     res.status(500).json({ success: false, msg: "Internal Server Error" });
+  }
+};
+
+// --- 3. ADMIN: FETCH ALL SIGNATURES FROM ALL USERS ---
+/**
+ * @desc    Fetch all documents from all users for the Admin Audit Center
+ * @route   GET /api/signatures/admin/all
+ * @access  Private (Admin Only)
+ */
+export const getAllSignaturesAdmin = async (req, res) => {
+  try {
+    // Populate userId to get student details (fullName, email) for the admin table
+    const allDocs = await UserDocuments.find()
+      .populate("userId", "fullName email")
+      .sort({ updatedAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: allDocs,
+    });
+  } catch (err) {
+    console.error("Admin Fetch Signatures Error:", err);
+    res.status(500).json({ success: false, msg: "Server Error" });
   }
 };

@@ -28,7 +28,7 @@ import userDashboardRoutes from "./src/routes/user/dashboardRoutes.js";
 import userLoanRoutes from "./src/routes/user/loanRoutes.js";
 import userSignatureRoutes from "./src/routes/user/documentRoutes.js";
 
-// --- NEW: IMPORT RECRUITMENT ROUTES ---
+// --- IMPORT RECRUITMENT ROUTES ---
 import recruitmentAuthRoutes from "./src/routes/recruitment/authRoutes.js";
 
 dotenv.config();
@@ -38,20 +38,23 @@ connectDB();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const rootDir = process.cwd();
 
 const app = express();
 
-// --- FIXED: AUTOMATIC DIRECTORY SETUP ---
-const rootDir = process.cwd();
+// --- 📁 AUTOMATIC DIRECTORY SETUP ---
+const absoluteUploadPath = path.join(rootDir, "uploads");
+
 const uploadDirs = [
-  path.join(rootDir, "uploads"),
-  path.join(rootDir, "uploads/documents"),
-  path.join(rootDir, "uploads/avatars"),
-  path.join(rootDir, "uploads/signatures"),
-  path.join(rootDir, "uploads/kyc"),
-  path.join(rootDir, "uploads/partners"), // New folder for recruitment partner documents
+  absoluteUploadPath,
+  path.join(absoluteUploadPath, "documents"),
+  path.join(absoluteUploadPath, "avatars"),
+  path.join(absoluteUploadPath, "signatures"),
+  path.join(absoluteUploadPath, "kyc"),
+  path.join(absoluteUploadPath, "partners"),
 ];
 
+// Ensure all required folders exist on startup
 uploadDirs.forEach((dir) => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -59,16 +62,62 @@ uploadDirs.forEach((dir) => {
   }
 });
 
-// --- MIDDLEWARE ---
-app.use(helmet({ crossOriginResourcePolicy: false }));
+// --- 🖼️ STATIC ASSETS (PRODUCTION FIX FOR 404s) ---
+/** * Setting 'Cross-Origin-Resource-Policy' to 'cross-origin' is critical
+ * to allow the browser to load images/PDFs when the frontend
+ * and backend are on different ports (e.g., 5173 and 5000).
+ */
+app.use(
+  "/uploads",
+  express.static(absoluteUploadPath, {
+    setHeaders: (res) => {
+      res.set("Cross-Origin-Resource-Policy", "cross-origin");
+      res.set("Access-Control-Allow-Origin", "*");
+    },
+  }),
+);
+console.log("✅ Static files being served from:", absoluteUploadPath);
 
-// --- DYNAMIC CORS CONFIGURATION ---
+// --- SECURITY & LOGGING (FIXED FOR CSP VIOLATIONS) ---
+app.use(
+  helmet({
+    crossOriginResourcePolicy: false,
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: {
+      directives: {
+        "default-src": ["'self'"],
+        "connect-src": [
+          "'self'",
+          "http://localhost:5000",
+          "http://127.0.0.1:5000",
+        ],
+        "img-src": [
+          "'self'",
+          "data:",
+          "blob:",
+          "http://localhost:5000",
+          "http://127.0.0.1:5000",
+          "https://ui-avatars.com",
+        ],
+        "script-src": ["'self'", "'unsafe-inline'"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "font-src": ["'self'", "data:", "https:"],
+        "frame-src": ["'self'", "blob:", "data:"], // Required for PDF previews
+      },
+    },
+  }),
+);
+app.use(morgan("dev"));
+
+// --- 🌐 DYNAMIC CORS CONFIGURATION ---
 const allowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
-  "http://localhost:5173", // User Panel
-  "http://localhost:5174", // Admin Panel
-  "http://localhost:5175", // Assuming Recruitment Panel might be on this port
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "http://localhost:5175",
+  "http://127.0.0.1:5173",
+  "http://127.0.0.1:5174",
 ];
 
 app.use(
@@ -76,22 +125,19 @@ app.use(
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
       if (allowedOrigins.indexOf(origin) === -1) {
-        const msg =
-          "The CORS policy for this site does not allow access from the specified Origin.";
-        return callback(new Error(msg), false);
+        return callback(new Error("CORS Policy Violation"), false);
       }
       return callback(null, true);
     },
     credentials: true,
-  })
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
 );
 
+// Body Parsers (Increased limit for high-res KYC documents)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
-app.use(morgan("dev"));
-
-// --- FIXED: STATIC ASSETS ---
-app.use("/uploads", express.static(path.join(rootDir, "uploads")));
 
 // --- 🚀 ADMIN PANEL ROUTES ---
 app.use("/api/admin/auth", adminAuthRoutes);
@@ -112,21 +158,22 @@ app.use("/api/loans", userLoanRoutes);
 app.use("/api/signatures", userSignatureRoutes);
 
 // --- 🤝 RECRUITMENT PANEL ROUTES ---
-// This mounts your new recruitment routes
 app.use("/api/recruitment/auth", recruitmentAuthRoutes);
 
 app.get("/", (req, res) => res.send("Pilot Finance Unified API Running 🚀"));
 
-// --- GLOBAL ERROR HANDLER ---
+// --- 🛠️ GLOBAL ERROR HANDLER ---
 app.use((err, req, res, next) => {
   console.error("❌ Server Error:", err.stack);
+
   if (err.code === "LIMIT_FILE_SIZE") {
     return res.status(400).json({
       success: false,
       message: "File too large. Maximum size allowed is 50MB.",
     });
   }
-  res.status(500).json({
+
+  res.status(err.status || 500).json({
     success: false,
     message: err.message || "Internal Server Error",
   });

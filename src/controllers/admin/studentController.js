@@ -10,7 +10,6 @@ export const createStudent = async (req, res) => {
   try {
     const { name, fullName, email, phone } = req.body;
 
-    // 1. Basic validation - Handles both 'name' and 'fullName' from frontend
     const displayName = fullName || name;
     if (!displayName || !email || !phone) {
       return res.status(400).json({
@@ -21,7 +20,6 @@ export const createStudent = async (req, res) => {
 
     const cleanEmail = email.toLowerCase().trim();
 
-    // 2. Prevent duplicate entries
     const existingStudent = await Student.findOne({ email: cleanEmail });
     if (existingStudent) {
       return res.status(409).json({
@@ -30,20 +28,17 @@ export const createStudent = async (req, res) => {
       });
     }
 
-    // 3. SMART LINK: Check if this student already has a User account
     const associatedUser = await User.findOne({ email: cleanEmail });
 
-    // 4. Create record using the Master Model standard 'fullName'
     const student = await Student.create({
       ...req.body,
       name: displayName,
-      fullName: displayName, // Unified field
+      fullName: displayName,
       email: cleanEmail,
       userId: associatedUser ? associatedUser._id : null,
       createdBy: req.user?._id,
     });
 
-    // --- Dynamic Notification Trigger ---
     await Notification.create({
       type: "info",
       message: `New Student Added: ${displayName}`,
@@ -67,7 +62,7 @@ export const createStudent = async (req, res) => {
 };
 
 /**
- * @desc Get All Students (Handles Dashboard 400 Error)
+ * @desc Get All Students (FIXED: Now shows all students for Audit/KYC)
  * @route GET /api/admin/student/all
  */
 export const getAllStudents = async (req, res) => {
@@ -86,12 +81,10 @@ export const getAllStudents = async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const filter = {};
 
-    // Filter Logic: Matches frontend dashboard dropdowns
     if (status && status !== "All Status") filter.status = status;
     if (loan && loan !== "All Types") filter.loan = loan;
     if (country && country !== "All Countries") filter.country = country;
 
-    // Search Logic: Supports both old 'name' and new 'fullName' fields
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: "i" } },
@@ -103,14 +96,13 @@ export const getAllStudents = async (req, res) => {
 
     const sortOptions = { [sortBy]: order === "asc" ? 1 : -1 };
 
-    // Population logic includes the standard User fields
+    const totalRecords = await Student.countDocuments(filter);
+
     const students = await Student.find(filter)
       .populate("userId", "avatar isPhoneVerified kycStatus")
       .sort(sortOptions)
       .skip(skip)
       .limit(parseInt(limit));
-
-    const totalRecords = await Student.countDocuments(filter);
 
     return res.status(200).json({
       success: true,
@@ -125,13 +117,14 @@ export const getAllStudents = async (req, res) => {
     console.error("Get Students Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch students. Database connection error.",
+      message: "Failed to fetch students.",
     });
   }
 };
 
 /**
  * @desc Update Student Profile
+ * FIXED: Syncs kycStatus to linked User and handles 500 errors safely
  */
 export const updateStudent = async (req, res) => {
   try {
@@ -144,20 +137,26 @@ export const updateStudent = async (req, res) => {
         .json({ success: false, message: "Student not found" });
     }
 
-    // If 'name' is being updated, update 'fullName' too for consistency
     if (req.body.name) req.body.fullName = req.body.name;
 
+    // 1. Update Student record
     const updatedStudent = await Student.findByIdAndUpdate(
       id,
       { $set: req.body },
-      { new: true, runValidators: true }
+      { new: true, runValidators: true },
     );
 
+    // 2. CRITICAL SYNC: Update linked User's kycStatus if it's being changed
+    if (updatedStudent.userId && req.body.kycStatus) {
+      await User.findByIdAndUpdate(updatedStudent.userId, {
+        kycStatus: req.body.kycStatus,
+      });
+    }
+
+    // 3. Create Notification
     await Notification.create({
-      type: "success",
-      message: `Profile Updated: ${
-        updatedStudent.fullName || updatedStudent.name
-      }`,
+      type: req.body.kycStatus === "Verified" ? "success" : "info",
+      message: `Profile ${req.body.kycStatus || "Updated"}: ${updatedStudent.fullName || updatedStudent.name}`,
       link: `/admin/students/${updatedStudent._id}`,
     });
 
@@ -167,9 +166,12 @@ export const updateStudent = async (req, res) => {
       data: updatedStudent,
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ success: false, message: "Server error during update" });
+    console.error("Update Student Controller Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error during update",
+      error: error.message,
+    });
   }
 };
 
@@ -180,12 +182,30 @@ export const getStudentById = async (req, res) => {
   try {
     const student = await Student.findById(req.params.id).populate("userId");
 
-    if (!student)
+    if (!student) {
       return res
         .status(404)
         .json({ success: false, message: "Student not found" });
+    }
 
-    return res.status(200).json({ success: true, data: student });
+    const studentObj = student.toObject();
+
+    const responseData = {
+      ...studentObj,
+      kycFiles: {
+        idFront: student.kycData?.idFront || null,
+        idBack: student.kycData?.idBack || null,
+        selfie: student.kycData?.selfie || null,
+        addressProof: student.kycData?.addressProofFile || null,
+        loa: student.kycData?.loa || null,
+        passbook: student.kycData?.passbook || null,
+      },
+      signatureAgreements: (student.documents || []).filter(
+        (doc) => doc.status === "Uploaded" || doc.status === "Signed",
+      ),
+    };
+
+    return res.status(200).json({ success: true, data: responseData });
   } catch (error) {
     return res
       .status(400)
@@ -199,10 +219,11 @@ export const getStudentById = async (req, res) => {
 export const deleteStudent = async (req, res) => {
   try {
     const student = await Student.findByIdAndDelete(req.params.id);
-    if (!student)
+    if (!student) {
       return res
         .status(404)
         .json({ success: false, message: "Record already deleted" });
+    }
 
     return res
       .status(200)

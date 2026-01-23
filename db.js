@@ -3,21 +3,37 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
+/**
+ * Establishment of a professional MongoDB connection.
+ * Includes connection pooling and error handling logic.
+ */
 const connectDB = async () => {
   try {
+    // Check if URI exists to prevent runtime crashes
+    if (!process.env.MONGO_URI) {
+      throw new Error("MONGO_URI is not defined in the environment variables");
+    }
+
     const conn = await mongoose.connect(process.env.MONGO_URI, {
-      // These options ensure your connection is stable and professional
-      autoIndex: true,
+      autoIndex: true, // Professional: ensures unique constraints (like email) are enforced
+      maxPoolSize: 10, // Allows multiple concurrent Admin/User requests
+      serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds if DB is unreachable
+      socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
     });
 
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
 
-    // If your Admin specifically needs 'database_one', we can access it like this:
-    // This allows you to keep using your 'dbOne' variable if needed
-    const dbOne = conn.connection.useDb("database_one", { useCache: true });
+    // Monitoring Connection Events
+    mongoose.connection.on("error", (err) => {
+      console.error(`❌ Database persistent error: ${err.message}`);
+    });
+
+    mongoose.connection.on("disconnected", () => {
+      console.warn("⚠️ MongoDB connection lost. Attempting to reconnect...");
+    });
   } catch (err) {
-    console.error("❌ MongoDB Connection Error:", err.message);
-    process.exit(1); // Stop the server if the DB is down
+    console.error("❌ MongoDB Initial Connection Error:", err.message);
+    process.exit(1); // Immediate exit to prevent the server from running in a broken state
   }
 };
 

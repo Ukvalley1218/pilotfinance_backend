@@ -1,82 +1,152 @@
-import Loan from "../../models/loan.js";
+import { Student } from "../../models/student.model.js";
 
 // --- 1. GET DASHBOARD DATA ---
-// Calculates real-time totals and progress for the User Dashboard
+/**
+ * @desc    Fetch student metrics, active loans, and recent transactions
+ * @route   GET /api/dashboard
+ */
 export const getDashboardData = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. Get ONLY Approved loans for the balance
-    const approvedLoans = await Loan.find({ userId, status: "Approved" });
+    // Find the student linked to this user
+    const student = await Student.findOne({ userId });
 
-    // 2. Calculate Real-Time Totals
-    const totalLoanAmount = approvedLoans.reduce(
-      (acc, loan) => acc + (loan.totalAmount || 0),
-      0
-    );
-    const totalPaid = approvedLoans.reduce(
-      (acc, loan) => acc + (loan.paidAmount || 0),
-      0
-    );
+    if (!student) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          totalLoanAmount: 0,
+          overallProgress: 0,
+          activeLoansCount: 0,
+          payoffDate: "N/A",
+          loans: [],
+          transactions: [],
+        },
+      });
+    }
 
-    // 3. Overall progress for the ring chart (Your original logic)
-    const overallProgress =
-      totalLoanAmount > 0 ? Math.round((totalPaid / totalLoanAmount) * 100) : 0;
+    // Initialize variables for calculation
+    let totalLoanAmount = 0;
+    let overallProgress = 0;
+    let activeLoans = [];
 
-    // 4. Get latest payoff date
-    const furthestLoan = await Loan.findOne({
-      userId,
-      status: "Approved",
-    }).sort({ payoffDate: -1 });
+    const loanAmt = student.requestedAmount || student.totalAmount || 0;
 
-    const formattedDate = furthestLoan
-      ? new Date(furthestLoan.payoffDate).toLocaleDateString("en-GB", {
+    if (student.status === "Approved" && loanAmt > 0) {
+      totalLoanAmount = loanAmt;
+
+      // Progress Tracking
+      const paidAmount = student.paidAmount || 0;
+      overallProgress =
+        totalLoanAmount > 0
+          ? Math.round((paidAmount / totalLoanAmount) * 100)
+          : 0;
+
+      activeLoans = [
+        {
+          id: student.appId || student._id.toString().slice(-6).toUpperCase(),
+          name: student.loanType || "Education Loan",
+          period: student.duration || "Active Term",
+          amount: totalLoanAmount,
+          progress: overallProgress,
+        },
+      ];
+    } else if (student.status === "Pending") {
+      totalLoanAmount = loanAmt;
+      overallProgress = 0;
+      activeLoans = [
+        {
+          id: student.appId || student._id.toString().slice(-6).toUpperCase(),
+          name: student.loanType || "Education Loan",
+          period: "Approval Pending",
+          amount: totalLoanAmount,
+          progress: 0,
+        },
+      ];
+    }
+
+    // --- RECENT TRANSACTIONS LOGIC ---
+    // Note: You can replace this with a query to a 'Transaction' collection later
+    // Example: const transactions = await Transaction.find({ studentId: student._id }).limit(5);
+    const recentTransactions = [
+      {
+        id: "TXN-" + Math.floor(1000 + Math.random() * 9000),
+        type: "Initial Deposit",
+        amount: totalLoanAmount > 0 ? 500.0 : 0,
+        status: "Completed",
+        date: new Date().toISOString(),
+      },
+      {
+        id: "TXN-" + Math.floor(1000 + Math.random() * 9000),
+        type: "Processing Fee",
+        amount: totalLoanAmount > 0 ? 45.0 : 0,
+        status: "Processed",
+        date: new Date().toISOString(),
+      },
+    ].filter((t) => t.amount > 0); // Only show if there is an actual loan amount
+
+    const formattedDate = student.updatedAt
+      ? new Date(student.updatedAt).toLocaleDateString("en-GB", {
           day: "2-digit",
           month: "short",
           year: "numeric",
         })
       : "N/A";
 
-    // 5. Response - Keeping your exact data structure
+    // Combined Response for Frontend
     res.status(200).json({
-      totalLoanAmount,
-      overallProgress,
-      activeLoansCount: approvedLoans.length,
-      payoffDate: formattedDate,
-      loans: approvedLoans.map((loan) => ({
-        id: loan._id,
-        name: loan.title || "New Loan Application", // Mapping to your Master Model 'title'
-        period: loan.period,
-        amount: loan.totalAmount,
-        progress:
-          loan.totalAmount > 0
-            ? Math.round((loan.paidAmount / loan.totalAmount) * 100)
-            : 0,
-      })),
+      success: true,
+      data: {
+        totalLoanAmount,
+        overallProgress,
+        activeLoansCount: activeLoans.length,
+        payoffDate: formattedDate,
+        loans: activeLoans,
+        transactions: recentTransactions, // New field for the UI table
+      },
     });
   } catch (err) {
-    console.error("Dashboard Data Error:", err);
-    res.status(500).json({ msg: "Server Error" });
+    console.error("Dashboard Sync Error:", err);
+    res.status(500).json({ success: false, msg: "Server Error" });
   }
 };
 
 // --- 2. GET NOTIFICATIONS ---
-// Provides status updates to the user regarding their application
+/**
+ * @desc    Generate dynamic notifications based on KYC and Application status
+ * @route   GET /api/dashboard/notifications
+ */
 export const getNotifications = async (req, res) => {
   try {
-    // Keeping your exact mock data as requested for dynamic-readiness
+    const userId = req.user.id;
+    const student = await Student.findOne({ userId });
+
+    if (!student) {
+      return res.status(200).json({ success: true, notifications: [] });
+    }
+
     const notifications = [
       {
-        type: "approval",
-        title: "Loan Eligibility Checked",
-        message: "Your profile has been processed for basic loan eligibility.",
-        time: new Date(),
+        _id: "notif_status_1",
+        type: "status",
+        title: "Application Status",
+        message: `Your loan application is currently: ${student.status || "In Review"}`,
+        time: student.updatedAt || new Date(),
+        read: false,
       },
       {
-        type: "status",
-        title: "Document Verification",
-        message: "Your KYC documents are currently being reviewed by our team.",
-        time: new Date(),
+        _id: "notif_kyc_1",
+        type: "kyc",
+        title: "KYC Verification",
+        message:
+          student.kycStatus === "Verified"
+            ? "Your identity documents have been verified."
+            : student.kycStatus === "Pending"
+              ? "Your documents are currently under review."
+              : "Please complete your KYC upload.",
+        time: student.updatedAt || new Date(),
+        read: false,
       },
     ];
 

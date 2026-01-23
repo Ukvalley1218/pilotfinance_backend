@@ -2,10 +2,16 @@ import mongoose from "mongoose";
 
 const loanSchema = new mongoose.Schema(
   {
+    // The link to the user/student who applied
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: [true, "User ID is required"],
+    },
+    // The link to the partner who submitted the application
+    partnerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
     // --- SHARED IDENTIFIERS ---
     loanId: {
@@ -32,10 +38,10 @@ const loanSchema = new mongoose.Schema(
         "Personal",
         "Other",
       ],
-      default: "Primary",
+      default: "Education", // Professional default for recruitment project
     },
 
-    // --- FINANCIAL DATA (Input & Calculations) ---
+    // --- FINANCIAL DATA ---
     totalAmount: {
       type: Number,
       required: [true, "Total loan amount is required"],
@@ -109,17 +115,29 @@ const loanSchema = new mongoose.Schema(
   {
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
-    timestamps: true,
-  }
+    timestamps: true, // CRITICAL: Makes Dashboard "Recent" sorting work
+  },
 );
 
-// --- VIRTUAL FOR PROGRESS CALCULATION (Displays in User Panel) ---
+// --- VIRTUALS FOR ADMIN DASHBOARD CORRELATION ---
+
+// 1. Progress Calculation for User Panel
 loanSchema.virtual("progress").get(function () {
   if (!this.totalAmount || this.totalAmount === 0) return 0;
   const percentage = (this.paidAmount / this.totalAmount) * 100;
   return Math.min(Math.round(percentage), 100);
 });
 
-// Export as default for the unified project
+// 2. Mapping 'totalAmount' to 'requestedAmount' for Dashboard UI
+loanSchema.virtual("requestedAmount").get(function () {
+  return this.totalAmount;
+});
+
+// 3. Mapping 'userId.fullName' to 'borrowerName' for Dashboard UI
+// Note: Requires .populate('userId') in your Admin Controller
+loanSchema.virtual("borrowerName").get(function () {
+  return this.userId ? this.userId.fullName : "Unknown Student";
+});
+
 const Loan = mongoose.model("Loan", loanSchema);
 export default Loan;

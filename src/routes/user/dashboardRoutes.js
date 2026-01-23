@@ -8,16 +8,16 @@ import { protect } from "../../middlewares/authMiddleware.js";
 const router = express.Router();
 
 /**
- * @route   GET /api/dashboard
- * @desc    Get user loan stats and list
- * @access  Private
+ * @route   GET /api/dashboard/
+ * @desc    Get unified student dashboard stats (Total Amount, Progress, Active Portfolio)
+ * @access  Private (Requires Student Token)
  */
 router.get("/", protect, getDashboardData);
 
 /**
  * @route   GET /api/dashboard/notifications
- * @desc    Get user professional notifications
- * @access  Private
+ * @desc    Get dynamic application status alerts and KYC verification updates
+ * @access  Private (Requires Student Token)
  * @url     http://localhost:5000/api/dashboard/notifications
  */
 router.get("/notifications", protect, getNotifications);
