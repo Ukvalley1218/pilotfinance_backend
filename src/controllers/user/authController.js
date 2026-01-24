@@ -268,31 +268,84 @@ export const resetPassword = async (req, res) => {
 };
 
 // --- 9. SEND VERIFICATION OTP ---
+// export const sendOTP = async (req, res) => {
+//   try {
+//     const { email } = req.body;
+//     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+//     const user = await User.findOneAndUpdate(
+//       { email: email.toLowerCase().trim() },
+//       { otpCode: otp, otpExpires: new Date(Date.now() + 10 * 60000) },
+//       { new: true },
+//     );
+    
+
+//     if (!user) return res.status(404).json({ msg: "User not found" });
+
+//     await transporter.sendMail({
+//       from: `"Pilot Finance" <${process.env.EMAIL_USER}>`,
+//       to: user.email,
+//       subject: "Verification Code",
+//       html: `<h2>Your verification code is: ${otp}</h2>`,
+//     });
+//     return res
+//       .status(200)
+//       .json({ success: true, msg: "Code sent", userId: user._id });
+//   } catch (err) {
+//     return res.status(500).json({ success: false, msg: "Failed to send OTP" });
+//   }
+// };
 export const sendOTP = async (req, res) => {
   try {
     const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ msg: "Email is required" });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 1️⃣ Store OTP in DB FIRST
     const user = await User.findOneAndUpdate(
-      { email: email.toLowerCase().trim() },
-      { otpCode: otp, otpExpires: new Date(Date.now() + 10 * 60000) },
-      { new: true },
+      { email: cleanEmail },
+      {
+        otpCode: otp,
+        otpExpires: new Date(Date.now() + 10 * 60 * 1000),
+      },
+      { new: true }
     );
 
-    if (!user) return res.status(404).json({ msg: "User not found" });
+    if (!user) {
+      return res.status(404).json({ msg: "User not found" });
+    }
 
-    await transporter.sendMail({
-      from: `"Pilot Finance" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: "Verification Code",
-      html: `<h2>Your verification code is: ${otp}</h2>`,
+    // 2️⃣ Try sending email (non-blocking logic)
+    try {
+      await transporter.sendMail({
+        from: `"Pilot Finance" <${process.env.EMAIL_USER}>`,
+        to: user.email,
+        subject: "Verification Code",
+        html: `<h2>Your verification code is: ${otp}</h2>`,
+      });
+    } catch (mailError) {
+      console.error("EMAIL FAILED BUT OTP SAVED:", mailError.message);
+    }
+
+    // 3️⃣ Always respond success once OTP is stored
+    return res.status(200).json({
+      success: true,
+      msg: "OTP generated successfully",
+      userId: user._id,
     });
-    return res
-      .status(200)
-      .json({ success: true, msg: "Code sent", userId: user._id });
+
   } catch (err) {
-    return res.status(500).json({ success: false, msg: "Failed to send OTP" });
+    console.error("SEND OTP ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to generate OTP",
+    });
   }
 };
+
 
 // --- 10. VERIFY OTP ---
 export const verifyOTP = async (req, res) => {
