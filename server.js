@@ -89,14 +89,14 @@ app.use(
         "connect-src": [
           "'self'",
           "http://localhost:5000",
-          "http://127.0.0.1:5000",
+           "https://pilotfinance-backend.onrender.com",
         ],
         "img-src": [
           "'self'",
           "data:",
           "blob:",
           "http://localhost:5000",
-          "http://127.0.0.1:5000",
+           "https://pilotfinance-backend.onrender.com",
           "https://ui-avatars.com",
         ],
         "script-src": ["'self'", "'unsafe-inline'"],
@@ -118,22 +118,31 @@ const allowedOrigins = [
   "http://localhost:5175",
   "http://127.0.0.1:5173",
   "http://127.0.0.1:5174",
+  "https://pf.valleyhoster.com",
 ];
 
 app.use(
   cors({
-    origin: function (origin, callback) {
+    origin: (origin, callback) => {
+      // Allow server-to-server, Postman, cron jobs
       if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
-        return callback(new Error("CORS Policy Violation"), false);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
       }
-      return callback(null, true);
+
+      // Never throw here
+      return callback(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  }),
+  })
 );
+
+// Required for preflight
+app.options("*", cors());
+
 
 // Body Parsers (Increased limit for high-res KYC documents)
 app.use(express.json({ limit: "50mb" }));
