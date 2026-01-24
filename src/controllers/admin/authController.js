@@ -33,7 +33,7 @@ export const registerUser = async (req, res) => {
       fullName: name,
       email: cleanEmail,
       password,
-      role: "admin",
+      role: "Admin",
     });
 
     return res.status(201).json({

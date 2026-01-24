@@ -19,12 +19,13 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: [
         "Super Admin",
-        "admin",
+        "Admin",
         "Editor",
         "User",
         "user",
         "student",
         "Partner",
+        "admin"
       ],
       default: "User",
     },
