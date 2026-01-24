@@ -387,3 +387,41 @@ export const getAllPartners = async (req, res) => {
 };
 
 export const login = sharedLogin;
+// Add this to your recruitment/partner controller
+export const getStudentSignaturesForPartner = async (req, res) => {
+  try {
+    const partnerId = req.user.id;
+    const { studentId } = req.params;
+
+    // 1. Verify the student is actually referred by this partner
+    const student = await Student.findOne({
+      _id: studentId,
+      referredBy: partnerId,
+    });
+
+    if (!student) {
+      return res.status(403).json({
+        success: false,
+        msg: "Access denied or student not found in your portfolio",
+      });
+    }
+
+    // 2. Fetch the signatures using the student's userId (Matching the Admin logic)
+    // We assume there is a Signature model linked by userId
+    const signatureRecord = await Signature.findOne({ userId: student.userId });
+
+    if (!signatureRecord) {
+      return res.status(200).json({ success: true, documents: [] });
+    }
+
+    // 3. Return the documents that are signed/uploaded
+    const signedDocs = signatureRecord.documents.filter(
+      (d) => d.status === "Uploaded" || d.status === "Signed",
+    );
+
+    res.status(200).json({ success: true, data: signedDocs });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, msg: "Internal server error" });
+  }
+};
