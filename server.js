@@ -141,7 +141,7 @@ app.use(
 );
 
 // Required for preflight
-app.options("*", cors());
+// app.options("*", cors());
 
 
 // Body Parsers (Increased limit for high-res KYC documents)
