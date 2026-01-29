@@ -89,14 +89,14 @@ app.use(
         "connect-src": [
           "'self'",
           "http://localhost:5000",
-           "https://pilotfinance-backend.onrender.com",
+          "https://pilotfinance-backend.onrender.com",
         ],
         "img-src": [
           "'self'",
           "data:",
           "blob:",
           "http://localhost:5000",
-           "https://pilotfinance-backend.onrender.com",
+          "https://pilotfinance-backend.onrender.com",
           "https://ui-avatars.com",
         ],
         "script-src": ["'self'", "'unsafe-inline'"],
@@ -139,12 +139,11 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
-  })
+  }),
 );
 
 // Required for preflight
 // app.options("*", cors());
-
 
 // Body Parsers (Increased limit for high-res KYC documents)
 app.use(express.json({ limit: "50mb" }));

@@ -11,8 +11,6 @@ const studentSchema = new mongoose.Schema(
     },
 
     // --- LINKED STUDENTS IMPROVEMENT ---
-    // This field identifies which Partner "owns" this student/lead.
-    // When a partner links a user from the pool, this ID is set to that Partner's User ID.
     referredBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -41,21 +39,28 @@ const studentSchema = new mongoose.Schema(
       bankAccount: { type: String, default: "" },
       ifscCode: { type: String, default: "" },
       idType: { type: String, default: "National ID" },
+      documentType: { type: String, default: "" }, // Added to store select value
+
       // File URLs
+      // FIXED: Added missing fields so MongoDB doesn't delete them
+      front: { type: String, default: null }, // Section 1 Front
+      back: { type: String, default: null }, // Section 1 Back
       idFront: { type: String, default: null },
       idBack: { type: String, default: null },
+      selfie: { type: String, default: null }, // Passport Photo
       passbook: { type: String, default: null },
       loa: { type: String, default: null },
       addressProofFile: { type: String, default: null },
+
       // Address Details
       addressState: { type: String, default: "" },
       addressCity: { type: String, default: "" },
       postalCode: { type: String, default: "" },
       addressDocType: { type: String, default: "Bank Statement" },
+      submittedAt: { type: Date },
     },
 
-    // --- DIGITAL SIGNATURES (From Signature Page) ---
-    // Stores history of all signed documents for this specific application
+    // --- DIGITAL SIGNATURES ---
     documents: [
       {
         name: String,

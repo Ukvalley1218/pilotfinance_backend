@@ -1,7 +1,5 @@
 import mongoose from "mongoose";
 
-// Removed dbOne import - using unified connection from src/db.js
-
 const partnerSchema = new mongoose.Schema(
   {
     name: {
@@ -22,12 +20,11 @@ const partnerSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["Active", "Inactive"],
+      // Status remains a String but without strict enum enforcement to prevent crashes
       default: "Active",
     },
     gender: {
       type: String,
-      enum: ["Male", "Female", "Other"],
       default: "Male",
     },
     dob: {
@@ -48,7 +45,7 @@ const partnerSchema = new mongoose.Schema(
     },
     businessType: {
       type: String,
-      enum: ["Agency", "Individual", "Company"],
+      // Removed strict enum - will now accept any string from frontend
       default: "Agency",
     },
     regNumber: {
@@ -69,7 +66,8 @@ const partnerSchema = new mongoose.Schema(
     },
     idProofType: {
       type: String,
-      default: "Driver’s License",
+      // Removed strict enum - will now accept any string from frontend
+      default: "Passport",
     },
     idProofNumber: {
       type: String,
@@ -77,7 +75,7 @@ const partnerSchema = new mongoose.Schema(
     },
     planType: {
       type: String,
-      enum: ["Monthly", "Yearly"],
+      // Removed strict enum
       default: "Yearly",
     },
     feeAmount: {
@@ -85,8 +83,7 @@ const partnerSchema = new mongoose.Schema(
       default: 0,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-// Changed from dbOne.model to mongoose.model
 export const Partner = mongoose.model("Partner", partnerSchema);

@@ -25,7 +25,7 @@ const userSchema = new mongoose.Schema(
         "user",
         "student",
         "Partner",
-        "admin"
+        "admin",
       ],
       default: "User",
     },
@@ -61,13 +61,10 @@ const userSchema = new mongoose.Schema(
 
     // --- RECRUITMENT PARTNER SPECIFIC DATA ---
     companyName: { type: String },
-    businessType: { type: String }, // e.g., Individual, Agency
+    businessType: { type: String },
     website: { type: String },
     commissionRate: { type: Number, default: 0 },
 
-    // --- LINKED STUDENTS IMPROVEMENT ---
-    // Refers to the "Student" model which contains loan and app logic.
-    // This allows partners to track specific application progress.
     referredStudents: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Student" },
     ],
@@ -83,14 +80,15 @@ const userSchema = new mongoose.Schema(
       addressCity: { type: String },
       postalCode: { type: String },
       addressDocType: { type: String },
-      addressProofFile: { type: String },
-      front: { type: String },
-      back: { type: String },
-      loa: { type: String },
-      passbook: { type: String },
-      idFront: { type: String },
-      idBack: { type: String },
-      selfie: { type: String },
+      addressProofFile: { type: String, default: null },
+      // FIXED/SYNCED: Standardized defaults for Section 1 and Section 3 persistence
+      front: { type: String, default: null },
+      back: { type: String, default: null },
+      loa: { type: String, default: null },
+      passbook: { type: String, default: null },
+      idFront: { type: String, default: null },
+      idBack: { type: String, default: null },
+      selfie: { type: String, default: null },
       submittedAt: { type: Date, default: Date.now },
     },
 
@@ -104,7 +102,7 @@ const userSchema = new mongoose.Schema(
 );
 
 // --- PASSWORD ENCRYPTION HOOK ---
-userSchema.pre("save", async function () {
+userSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return;
 
   const salt = await bcrypt.genSalt(10);

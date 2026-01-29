@@ -48,7 +48,6 @@ export const updatePersonalInfo = async (req, res) => {
     ).select("-password");
 
     // SYNC TO STUDENT MODEL
-    // Added upsert: true to ensure the record is created if it doesn't exist
     await Student.findOneAndUpdate(
       { userId: req.user.id },
       {
@@ -95,6 +94,9 @@ export const submitKycDocuments = async (req, res) => {
       bankName,
       ifscCode,
       idType,
+      // FIXED: Added front and back mapping so they persist in the DB
+      front: getPath("front"),
+      back: getPath("back"),
       idFront: getPath("idFront"),
       idBack: getPath("idBack"),
       selfie: getPath("selfie"),
@@ -109,14 +111,13 @@ export const submitKycDocuments = async (req, res) => {
     await user.save();
 
     // --- SYNC TO STUDENT MODEL (Admin visibility) ---
-    // Using upsert: true ensures the Admin can see the record even if it's the first time data is saved
     await Student.findOneAndUpdate(
       { userId: req.user.id },
       {
         $set: {
           kycData: updatedKycData,
           kycStatus: "Pending",
-          name: user.fullName, // Ensure name is synced for Admin list
+          name: user.fullName,
           email: user.email,
         },
       },
@@ -165,7 +166,6 @@ export const submitAddressProof = async (req, res) => {
     });
 
     // --- SYNC TO STUDENT MODEL (Admin visibility) ---
-    // Force set the kycStatus and kycData object
     await Student.findOneAndUpdate(
       { userId: req.user.id },
       {
