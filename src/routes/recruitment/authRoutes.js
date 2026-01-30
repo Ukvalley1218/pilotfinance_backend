@@ -1,14 +1,32 @@
 import express from "express";
 import multer from "multer";
 import path from "path";
-import * as recruitmentController from "../../controllers/recruitment/authController.js";
+// FIXED: Using named imports to prevent 'undefined' handler errors
+import {
+  registerPartner,
+  login,
+  getMe,
+  updateMe,
+  updatePartnerProfile,
+  getDashboardStats,
+  getActivityLog,
+  getAgreementDetails,
+  signAgreement,
+  getAllPartners,
+  getAvailableStudents,
+  linkStudentToPartner,
+  getReferredStudents,
+  verifyStudent,
+  getStudentSignaturesForPartner,
+  getPartnerLoans,
+  fundStudentLoan,
+  getWalletData,
+} from "../../controllers/recruitment/authController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
 // --- 1. MULTER CONFIGURATIONS ---
-
-// A. General Partner Documents (KYC)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "./uploads/partners");
@@ -18,7 +36,6 @@ const storage = multer.diskStorage({
   },
 });
 
-// B. Profile Avatars
 const avatarStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, "./uploads/avatars");
@@ -50,20 +67,14 @@ const uploadAvatar = multer({
 });
 
 // ---------- RECRUITMENT AUTH ROUTES (Public) ----------
-router.post("/register", recruitmentController.registerPartner);
-router.post("/login", recruitmentController.login);
+router.post("/register", registerPartner);
+router.post("/login", login);
 
 // ---------- RECRUITMENT PRIVATE ROUTES (Requires Token) ----------
 
 // 1. Profile & Account Management
-router.get("/me", protect, recruitmentController.getMe);
-
-router.put(
-  "/update-me",
-  protect,
-  uploadAvatar.single("avatar"),
-  recruitmentController.updateMe,
-);
+router.get("/me", protect, getMe);
+router.put("/update-me", protect, uploadAvatar.single("avatar"), updateMe);
 
 router.put(
   "/update-profile",
@@ -73,50 +84,37 @@ router.put(
     { name: "gstCert", maxCount: 1 },
     { name: "idProof", maxCount: 1 },
     { name: "mou", maxCount: 1 },
-    { name: "regions", maxCount: 1 },
-    { name: "intake", maxCount: 1 },
-    { name: "destinations", maxCount: 1 },
-    { name: "categories", maxCount: 1 },
   ]),
-  recruitmentController.updatePartnerProfile,
+  updatePartnerProfile,
 );
 
 // 2. Dashboard, Stats & Activity
-router.get(
-  "/dashboard-stats",
-  protect,
-  recruitmentController.getDashboardStats,
-);
-router.get("/activity", protect, recruitmentController.getActivityLog);
+router.get("/dashboard-stats", protect, getDashboardStats);
+router.get("/activity", protect, getActivityLog);
 
 // 3. Legal & Agreements
-router.get("/agreement", protect, recruitmentController.getAgreementDetails);
-router.post("/agreement/sign", protect, recruitmentController.signAgreement);
+router.get("/agreement", protect, getAgreementDetails);
+router.post("/agreement/sign", protect, signAgreement);
 
 // --- ADMIN DATA ROUTE ---
-router.get("/partners", protect, recruitmentController.getAllPartners);
+router.get("/partners", protect, getAllPartners);
 
-// 4. Student Management & LOAN LEDGER SYNC
-// This is the core logic for the "Selection" system
+// 4. Student Management
+router.get("/available-students", protect, getAvailableStudents);
+router.post("/link-user", protect, linkStudentToPartner);
+router.get("/my-students", protect, getReferredStudents);
+router.put("/verify-student/:studentId", protect, verifyStudent);
 router.get(
-  "/available-students",
+  "/student-signatures/:studentId",
   protect,
-  recruitmentController.getAvailableStudents,
+  getStudentSignaturesForPartner,
 );
 
-router.post("/link-user", protect, recruitmentController.linkStudentToPartner);
+// 5. Loan Ledger & Funding
+router.get("/loans", protect, getPartnerLoans);
+router.post("/fund-loan", protect, fundStudentLoan);
 
-// Fetch students currently linked to this partner
-router.get("/my-students", protect, recruitmentController.getReferredStudents);
-
-// THE FINAL FIX: Fetch loan ledger filtered for this partner
-// Frontend should now hit: /api/recruitment/loans
-router.get("/loans", protect, recruitmentController.getPartnerLoans);
-
-// Legacy/Internal student addition
-// router.post("/add-student", protect, recruitmentController.addStudent);
-
-// 5. Wallet & Transactions
-router.get("/wallet", protect, recruitmentController.getWalletData);
+// 6. Wallet & Transactions
+router.get("/wallet", protect, getWalletData);
 
 export default router;

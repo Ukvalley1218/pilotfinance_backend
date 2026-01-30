@@ -1,6 +1,6 @@
 import UserDocuments from "../../models/UserDocuments.js";
 
-// --- 1. FETCH ALL SAVED DOCUMENTS (For Individual User) ---
+// --- 1. FETCH ALL SAVED DOCUMENTS ---
 export const getUserDocuments = async (req, res) => {
   try {
     const data = await UserDocuments.findOne({ userId: req.user.id });
@@ -9,7 +9,6 @@ export const getUserDocuments = async (req, res) => {
       return res.status(200).json({ success: true, data: { documents: [] } });
     }
 
-    // Map any old "Pending" statuses to "Sign Now" for Frontend UI consistency
     const mappedDocs = data.documents.map((doc) => ({
       ...doc.toObject(),
       status: doc.status === "Pending" ? "Sign Now" : doc.status,
@@ -25,7 +24,7 @@ export const getUserDocuments = async (req, res) => {
   }
 };
 
-// --- 2. UPLOAD & PERSIST DOCUMENT (For Individual User) ---
+// --- 2. UPLOAD & PERSIST DOCUMENT ---
 export const uploadDocument = async (req, res) => {
   try {
     const { docId } = req.params;
@@ -37,7 +36,6 @@ export const uploadDocument = async (req, res) => {
 
     let userDocs = await UserDocuments.findOne({ userId });
 
-    // Initial setup if this is the user's first upload
     if (!userDocs) {
       userDocs = new UserDocuments({
         userId,
@@ -55,21 +53,13 @@ export const uploadDocument = async (req, res) => {
     const index = parseInt(docId) - 1;
 
     if (userDocs.documents[index]) {
-      // Clean up statuses to avoid Mongoose Enum ValidationErrors on save
       userDocs.documents.forEach((doc) => {
         if (doc.status === "Pending") {
           doc.status = "Sign Now";
         }
       });
 
-      // Update the target document
       userDocs.documents[index].status = "Uploaded";
-
-      /**
-       * VITAL FIX: Dynamic Folder Path
-       * Your multer.js logic puts 'SIG-' files in the 'signatures' folder.
-       * This code ensures the Database points to the CORRECT physical folder.
-       */
       const folder = req.file.filename.startsWith("SIG") ? "signatures" : "kyc";
 
       userDocs.documents[index].fileUrl =
@@ -93,15 +83,55 @@ export const uploadDocument = async (req, res) => {
   }
 };
 
-// --- 3. ADMIN: FETCH ALL SIGNATURES FROM ALL USERS ---
+// --- 3. DELETE/RESET DOCUMENT (The fix for your crash) ---
 /**
- * @desc    Fetch all documents from all users for the Admin Audit Center
- * @route   GET /api/signatures/admin/all
- * @access  Private (Admin Only)
+ * @desc    Reset a specific document slot back to "Sign Now"
+ * @route   DELETE /api/signatures/delete/:docId
+ * @access  Private
  */
+export const deleteSignature = async (req, res) => {
+  try {
+    const { docId } = req.params;
+    const userId = req.user.id;
+
+    const userDocs = await UserDocuments.findOne({ userId });
+
+    if (!userDocs) {
+      return res
+        .status(404)
+        .json({ success: false, msg: "No documents found" });
+    }
+
+    // Since docId is 1-6, and array index is 0-5
+    const index = parseInt(docId) - 1;
+
+    if (userDocs.documents[index]) {
+      // RESET the specific document slot instead of removing it from array
+      // This maintains the order of your 6 required documents
+      userDocs.documents[index].status = "Sign Now";
+      userDocs.documents[index].fileUrl = null;
+      userDocs.documents[index].fileType = null;
+      userDocs.documents[index].uploadedAt = null;
+
+      await userDocs.save();
+
+      return res.status(200).json({
+        success: true,
+        msg: "File removed and status reset",
+        data: userDocs,
+      });
+    }
+
+    res.status(404).json({ success: false, msg: "Document slot not found" });
+  } catch (err) {
+    console.error("Delete Signature Error:", err);
+    res.status(500).json({ success: false, msg: "Server Error" });
+  }
+};
+
+// --- 4. ADMIN: FETCH ALL SIGNATURES ---
 export const getAllSignaturesAdmin = async (req, res) => {
   try {
-    // Populate userId to get student details (fullName, email) for the admin table
     const allDocs = await UserDocuments.find()
       .populate("userId", "fullName email")
       .sort({ updatedAt: -1 });

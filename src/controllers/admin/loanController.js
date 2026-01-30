@@ -1,15 +1,15 @@
-import Loan from "../../models/loan.js"; // Pointing to the unified model
+import Loan from "../../models/loan.js";
+import mongoose from "mongoose";
 
 /**
  * @desc Create Loan (Triggered from Partner/User Panel)
- * @route POST /api/loan
+ * Updated to handle Monthly EMI math for consistency.
  */
 export const createLoan = async (req, res) => {
   try {
-    const { userId, totalAmount, requestedAmount } = req.body;
-
-    // Bridge the gap between naming conventions
-    const finalAmount = totalAmount || requestedAmount;
+    const { userId, totalAmount, requestedAmount, period, interestRate } =
+      req.body;
+    const finalAmount = Number(totalAmount || requestedAmount);
 
     if (!userId || !finalAmount) {
       return res.status(400).json({
@@ -18,11 +18,27 @@ export const createLoan = async (req, res) => {
       });
     }
 
-    // Creating loan using the unified model
-    // We explicitly map finalAmount to totalAmount to ensure DB consistency
+    // --- EMI AUTO-CALCULATION SYNC ---
+    // This ensures consistency even if created outside the Student's LoanConfigure page
+    const n = parseInt(period) || 12;
+    const r = (Number(interestRate) || 2.5) / 100; // Monthly rate decimal
+
+    // Monthly Reducing Balance Formula
+    const emi =
+      (finalAmount * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+    const totalWithInterest = Math.round(emi * n);
+
+    const payoffDate = new Date();
+    payoffDate.setMonth(payoffDate.getMonth() + n);
+
     const loan = await Loan.create({
       ...req.body,
       totalAmount: finalAmount,
+      totalWithInterest: req.body.totalWithInterest || totalWithInterest,
+      monthlyPayment: req.body.monthlyPayment || Math.round(emi),
+      interestRate: Number(interestRate) || 2.5,
+      payoffDate: req.body.payoffDate || payoffDate,
+      status: req.body.status || "Pending",
     });
 
     return res.status(201).json({
@@ -41,7 +57,6 @@ export const createLoan = async (req, res) => {
 
 /**
  * @desc Update Loan (Used by Admin for Approvals/Verification)
- * @route PUT /api/loan/:id
  */
 export const updateLoan = async (req, res) => {
   try {
@@ -82,7 +97,6 @@ export const updateLoan = async (req, res) => {
 
 /**
  * @desc Get All Loans (Dynamic sync for Admin Dashboard)
- * @route GET /api/loan/loans
  */
 export const getAllLoans = async (req, res) => {
   try {
@@ -109,13 +123,8 @@ export const getAllLoans = async (req, res) => {
 
     const sortOptions = { [sortBy]: order === "desc" ? -1 : 1 };
 
-    /**
-     * DYNAMIC SYNC LOGIC:
-     * 1. .populate("userId") ensures we get the Student Name for the Admin Dashboard.
-     * 2. Sorting by createdAt DESC ensures new requests from Partners appear at the top.
-     */
     const loans = await Loan.find(filter)
-      .populate("userId", "fullName email")
+      .populate("userId", "fullName email avatar")
       .sort(sortOptions)
       .skip(skip)
       .limit(parseInt(limit));
@@ -146,7 +155,7 @@ export const getAllLoans = async (req, res) => {
 export const getLoanById = async (req, res) => {
   try {
     const loan = await Loan.findById(req.params.id)
-      .populate("userId", "fullName email phone address")
+      .populate("userId", "fullName email phone address avatar")
       .populate("partnerId", "companyName fullName email");
 
     if (!loan) {
@@ -154,6 +163,7 @@ export const getLoanById = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Loan not found" });
     }
+
     return res.status(200).json({ success: true, data: loan });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Invalid Loan ID" });

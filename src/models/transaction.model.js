@@ -8,25 +8,32 @@ const transactionSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
-    // The Owner of the transaction (Partner, Admin, or Student)
+    // The Owner of the transaction (Recruiter, Admin, or Student)
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: true,
     },
+    // --- THE CRITICAL FIX FOR MULTI-LOAN USERS ---
+    // This links the payment to a specific Loan Application ID
+    studentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Student",
+      required: false, // Optional for general wallet txns, required for loan repayments
+    },
     // Dynamic values for Wallet Icons
     type: {
       type: String,
-      enum: ["Credit", "Debit"], // Capitalized to match your Admin logic
+      enum: ["Credit", "Debit"],
       required: true,
     },
-    // "desc" is used for Admin, "title" for Wallet (we will use desc for both)
+    // Description for UI
     desc: {
       type: String,
       required: true,
     },
     subDesc: {
-      type: String, // Used for extra details or student names
+      type: String, // Used for extra details, student names, or Loan Ref IDs
     },
     amount: {
       type: Number,
@@ -38,11 +45,22 @@ const transactionSchema = new mongoose.Schema(
       default: "Completed",
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-// --- THE FIX: PREVENT OVERWRITE ERROR ---
-// This checks if the model already exists before trying to compile it again.
+// Virtual for UI sync (Wallet Dashboard expects 'title' and 'txnId')
+transactionSchema.virtual("title").get(function () {
+  return this.desc;
+});
+
+transactionSchema.virtual("txnId").get(function () {
+  return this.id;
+});
+
+transactionSchema.set("toJSON", { virtuals: true });
+transactionSchema.set("toObject", { virtuals: true });
+
+// Prevent overwrite error
 const Transaction =
   mongoose.models.Transaction ||
   mongoose.model("Transaction", transactionSchema);

@@ -1,16 +1,22 @@
 import { Student } from "../../models/student.model.js";
+import Loan from "../../models/loan.js";
+import Transaction from "../../models/transaction.model.js";
 
 // --- 1. GET DASHBOARD DATA ---
 /**
- * @desc    Fetch student metrics, active loans, and recent transactions
+ * @desc    Fetch student metrics, individual loans, and REAL database transactions
  * @route   GET /api/dashboard
  */
 export const getDashboardData = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Find the student linked to this user
-    const student = await Student.findOne({ userId });
+    // Parallel fetching for performance
+    const [student, loans, dbTransactions] = await Promise.all([
+      Student.findOne({ userId }),
+      Loan.find({ userId }).sort({ createdAt: -1 }),
+      Transaction.find({ userId }).sort({ createdAt: -1 }).limit(10),
+    ]);
 
     if (!student) {
       return res.status(200).json({
@@ -26,65 +32,51 @@ export const getDashboardData = async (req, res) => {
       });
     }
 
-    // Initialize variables for calculation
-    let totalLoanAmount = 0;
-    let overallProgress = 0;
-    let activeLoans = [];
+    // --- FINANCIAL CALCULATIONS ---
+    let grandTotalRemainingDebt = 0; // Current remaining balance
+    let grandTotalOriginalDebt = 0; // Initial total including interest
+    let grandTotalPaid = 0; // Total amount paid off
 
-    const loanAmt = student.requestedAmount || student.totalAmount || 0;
+    const processedLoans = loans.map((loan) => {
+      const remaining = loan.totalAmount || 0;
+      const paid = loan.paidAmount || 0;
+      const original = loan.totalWithInterest || remaining + paid;
 
-    if (student.status === "Approved" && loanAmt > 0) {
-      totalLoanAmount = loanAmt;
+      // We only sum financial metrics for non-pending loans
+      const isLive = ["Approved", "Active", "Disbursed", "Completed"].includes(
+        loan.status,
+      );
 
-      // Progress Tracking
-      const paidAmount = student.paidAmount || 0;
-      overallProgress =
-        totalLoanAmount > 0
-          ? Math.round((paidAmount / totalLoanAmount) * 100)
-          : 0;
+      if (isLive) {
+        grandTotalRemainingDebt += remaining;
+        grandTotalPaid += paid;
+        grandTotalOriginalDebt += original;
+      }
 
-      activeLoans = [
-        {
-          id: student.appId || student._id.toString().slice(-6).toUpperCase(),
-          name: student.loanType || "Education Loan",
-          period: student.duration || "Active Term",
-          amount: totalLoanAmount,
-          progress: overallProgress,
-        },
-      ];
-    } else if (student.status === "Pending") {
-      totalLoanAmount = loanAmt;
-      overallProgress = 0;
-      activeLoans = [
-        {
-          id: student.appId || student._id.toString().slice(-6).toUpperCase(),
-          name: student.loanType || "Education Loan",
-          period: "Approval Pending",
-          amount: totalLoanAmount,
-          progress: 0,
-        },
-      ];
-    }
+      // Calculate progress for each specific loan in the list
+      const individualProgress =
+        original > 0 ? Math.round((paid / original) * 100) : 0;
 
-    // --- RECENT TRANSACTIONS LOGIC ---
-    // Note: You can replace this with a query to a 'Transaction' collection later
-    // Example: const transactions = await Transaction.find({ studentId: student._id }).limit(5);
-    const recentTransactions = [
-      {
-        id: "TXN-" + Math.floor(1000 + Math.random() * 9000),
-        type: "Initial Deposit",
-        amount: totalLoanAmount > 0 ? 500.0 : 0,
-        status: "Completed",
-        date: new Date().toISOString(),
-      },
-      {
-        id: "TXN-" + Math.floor(1000 + Math.random() * 9000),
-        type: "Processing Fee",
-        amount: totalLoanAmount > 0 ? 45.0 : 0,
-        status: "Processed",
-        date: new Date().toISOString(),
-      },
-    ].filter((t) => t.amount > 0); // Only show if there is an actual loan amount
+      return {
+        _id: loan._id, // Database ID for navigation to Pay Off page
+        id: loan.loanId,
+        loanType: loan.title || `${loan.category} Loan`,
+        category: loan.category,
+        status: loan.status,
+        amount: remaining, // Current balance shown in portfolio
+        totalWithInterest: original,
+        paidAmount: paid,
+        monthlyPayment: loan.monthlyPayment,
+        progress: individualProgress,
+        period: loan.period,
+      };
+    });
+
+    // Calculate Overall Progress Percentage (The Yellow Circle)
+    const overallProgress =
+      grandTotalOriginalDebt > 0
+        ? Math.round((grandTotalPaid / grandTotalOriginalDebt) * 100)
+        : 0;
 
     const formattedDate = student.updatedAt
       ? new Date(student.updatedAt).toLocaleDateString("en-GB", {
@@ -94,16 +86,25 @@ export const getDashboardData = async (req, res) => {
         })
       : "N/A";
 
-    // Combined Response for Frontend
+    const transactionList = dbTransactions.map((txn) => ({
+      id: txn.id,
+      type: txn.desc,
+      amount: txn.amount,
+      status: txn.status,
+      date: txn.createdAt,
+      direction: txn.type,
+    }));
+
     res.status(200).json({
       success: true,
       data: {
-        totalLoanAmount,
-        overallProgress,
-        activeLoansCount: activeLoans.length,
+        totalLoanAmount: grandTotalRemainingDebt, // Sum of remaining balances (e.g. $8,000)
+        overallProgress, // Based on original debt vs paid
+        activeLoansCount: processedLoans.filter((l) => l.status !== "Pending")
+          .length,
         payoffDate: formattedDate,
-        loans: activeLoans,
-        transactions: recentTransactions, // New field for the UI table
+        loans: processedLoans,
+        transactions: transactionList,
       },
     });
   } catch (err) {

@@ -5,7 +5,7 @@ import { Student } from "../../models/student.model.js";
 export const getKycStatus = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select(
-      "kycData kycStatus dob country state ssnPin",
+      "kycData kycStatus dob country state ssnPin phone",
     );
     if (!user)
       return res.status(404).json({ success: false, msg: "User not found" });
@@ -19,6 +19,7 @@ export const getKycStatus = async (req, res) => {
         country: user.country,
         state: user.state,
         ssnPin: user.ssnPin,
+        phone: user.phone,
       },
     });
   } catch (err) {
@@ -29,21 +30,34 @@ export const getKycStatus = async (req, res) => {
 // --- 2. HANDLE PERSONAL INFO (Step 1) ---
 export const updatePersonalInfo = async (req, res) => {
   try {
-    const { dob, country, state, pin1, pin2, pin3 } = req.body;
-    const fullPin =
-      pin1 && pin2 && pin3 ? `${pin1}-${pin2}-${pin3}` : undefined;
+    // UPDATED: Added phone, uni, course, and zipCode to match frontend PersonalInfo.jsx
+    const {
+      dob,
+      country,
+      state,
+      phone,
+      uni,
+      course,
+      zipCode,
+      pin1,
+      pin2,
+      pin3,
+    } = req.body;
+
+    const fullPin = pin1 && pin2 && pin3 ? `${pin1}-${pin2}-${pin3}` : zipCode;
 
     const updateFields = {
       dob,
       country,
       state,
+      phone, // Syncing phone to User Model
       kycStatus: "Pending",
     };
     if (fullPin) updateFields.ssnPin = fullPin;
 
     const updatedUser = await User.findByIdAndUpdate(
       req.user.id,
-      updateFields,
+      { $set: updateFields },
       { new: true },
     ).select("-password");
 
@@ -56,6 +70,11 @@ export const updatePersonalInfo = async (req, res) => {
           country: country,
           dob: dob,
           state: state,
+          phone: phone, // FIX: Now saving phone from form
+          uni: uni, // FIX: Now saving university from form
+          course: course, // FIX: Now saving course from form
+          name: updatedUser.fullName,
+          email: updatedUser.email,
         },
       },
       { upsert: true, new: true },
@@ -67,6 +86,7 @@ export const updatePersonalInfo = async (req, res) => {
       data: updatedUser,
     });
   } catch (err) {
+    console.error("Update Personal Info Error:", err);
     res.status(500).json({ msg: "Server Error during personal info update" });
   }
 };
@@ -94,7 +114,6 @@ export const submitKycDocuments = async (req, res) => {
       bankName,
       ifscCode,
       idType,
-      // FIXED: Added front and back mapping so they persist in the DB
       front: getPath("front"),
       back: getPath("back"),
       idFront: getPath("idFront"),

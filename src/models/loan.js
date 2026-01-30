@@ -2,18 +2,24 @@ import mongoose from "mongoose";
 
 const loanSchema = new mongoose.Schema(
   {
-    // The link to the user/student who applied
+    // --- RELATIONSHIPS ---
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: [true, "User ID is required"],
     },
-    // The link to the partner who submitted the application
+    // NEW: Link to the specific Student Application record
+    studentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Student",
+      required: false, // Set to true if every loan MUST have a student record
+    },
     partnerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
-    // --- SHARED IDENTIFIERS ---
+
+    // --- IDENTIFIERS ---
     loanId: {
       type: String,
       required: true,
@@ -38,31 +44,38 @@ const loanSchema = new mongoose.Schema(
         "Personal",
         "Other",
       ],
-      default: "Education", // Professional default for recruitment project
+      default: "Education",
     },
 
     // --- FINANCIAL DATA ---
-    totalAmount: {
+    principalRequested: {
       type: Number,
+      required: [true, "Original requested amount is required"],
+      min: [0, "Amount cannot be negative"],
+      default: 0,
+    }, // PERMANENT: The original borrowed amount
+
+    totalAmount: {
+      type: Number, // LIVE: Remaining Debt Balance
       required: [true, "Total loan amount is required"],
       min: [0, "Amount cannot be negative"],
     },
-    approvedAmount: {
-      type: Number,
+    totalWithInterest: {
+      type: Number, // PERMANENT: Principal + Interest (Total to be paid)
       default: 0,
     },
     paidAmount: {
-      type: Number,
+      type: Number, // LIVE: Total payments made so far
       default: 0,
       min: [0, "Paid amount cannot be negative"],
     },
     monthlyPayment: {
-      type: Number,
+      type: Number, // The EMI
       default: 0,
     },
     interestRate: {
-      type: Number,
-      default: 0,
+      type: Number, // percentage (e.g., 2.5)
+      default: 2.5,
     },
 
     // --- TIMELINES ---
@@ -88,7 +101,7 @@ const loanSchema = new mongoose.Schema(
       default: "0000",
     },
 
-    // --- STATUS & ADMIN TRACKING ---
+    // --- STATUS ---
     status: {
       type: String,
       enum: [
@@ -103,40 +116,50 @@ const loanSchema = new mongoose.Schema(
       ],
       default: "Pending",
     },
-    approvedBy: {
-      type: String,
-      default: "",
-    },
-    approvedBySub: {
-      type: String,
-      default: "",
-    },
+    approvedBy: { type: String, default: "" },
+    approvedBySub: { type: String, default: "" },
   },
   {
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
-    timestamps: true, // CRITICAL: Makes Dashboard "Recent" sorting work
+    timestamps: true,
   },
 );
 
-// --- VIRTUALS FOR ADMIN DASHBOARD CORRELATION ---
+// --- VIRTUALS FOR UI SYNC ---
 
-// 1. Progress Calculation for User Panel
+// 1. Progress: (Paid / Total Debt) * 100
 loanSchema.virtual("progress").get(function () {
-  if (!this.totalAmount || this.totalAmount === 0) return 0;
-  const percentage = (this.paidAmount / this.totalAmount) * 100;
+  if (!this.totalWithInterest || this.totalWithInterest === 0) return 0;
+  const percentage = (this.paidAmount / this.totalWithInterest) * 100;
   return Math.min(Math.round(percentage), 100);
 });
 
-// 2. Mapping 'totalAmount' to 'requestedAmount' for Dashboard UI
-loanSchema.virtual("requestedAmount").get(function () {
-  return this.totalAmount;
+// 2. Remaining Balance: (Total Debt - Paid)
+loanSchema.virtual("remainingBalance").get(function () {
+  const balance = (this.totalWithInterest || 0) - (this.paidAmount || 0);
+  return Math.max(0, balance);
 });
 
-// 3. Mapping 'userId.fullName' to 'borrowerName' for Dashboard UI
-// Note: Requires .populate('userId') in your Admin Controller
+// 3. Requested Amount
+loanSchema.virtual("requestedAmount").get(function () {
+  return this.principalRequested;
+});
+
+// 4. Interest Amount
+loanSchema.virtual("totalInterestAmount").get(function () {
+  return (this.totalWithInterest || 0) - (this.principalRequested || 0);
+});
+
 loanSchema.virtual("borrowerName").get(function () {
   return this.userId ? this.userId.fullName : "Unknown Student";
+});
+
+loanSchema.virtual("nextPaymentDate").get(function () {
+  if (!this.disbursementDate) return null;
+  const date = new Date(this.disbursementDate);
+  date.setMonth(date.getMonth() + 1);
+  return date;
 });
 
 const Loan = mongoose.model("Loan", loanSchema);
