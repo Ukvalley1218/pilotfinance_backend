@@ -313,7 +313,7 @@ export const sendOTP = async (req, res) => {
       },
       { new: true }
     );
-
+console.log("Otp",otp)
     if (!user) {
       return res.status(404).json({ msg: "User not found" });
     }

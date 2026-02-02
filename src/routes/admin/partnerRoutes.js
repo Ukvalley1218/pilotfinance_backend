@@ -5,6 +5,7 @@ import {
   getAllPartners,
   getPartnerById,
   deletePartner,
+  downloadPartnerReportPDF,
 } from "../../controllers/admin/partnerController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
 
@@ -36,6 +37,8 @@ router.get("/:id", protect, getPartnerById);
 // FIX: Handles GET /api/partner/partners/:id
 // This fixes the 404 in PartnerDetails.jsx when clicking "View"
 router.get("/partners/:id", protect, getPartnerById);
+
+router.get("/partners/:id/pdf",protect, downloadPartnerReportPDF);
 
 // Handles PUT /api/partner/:id
 router.put("/:id", protect, updatePartner);
