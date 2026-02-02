@@ -20,6 +20,7 @@ import reportRoutes from "./src/routes/admin/reportRoutes.js";
 import adminDocRoutes from "./src/routes/admin/documentRoutes.js";
 import financeRoutes from "./src/routes/admin/financeRoutes.js";
 import adminNotificationRoutes from "./src/routes/admin/notificationRoutes.js";
+import dashboardstats from "./src/routes/admin/dashboard.stats.js";
 
 // --- IMPORT USER ROUTES ---
 import userAuthRoutes from "./src/routes/user/authRoutes.js";
@@ -159,6 +160,7 @@ app.use("/api/admin/reports", reportRoutes);
 app.use("/api/admin/document", adminDocRoutes);
 app.use("/api/admin/finance", financeRoutes);
 app.use("/api/admin/notification", adminNotificationRoutes);
+app.use("/api/admin/dashboard/stats", dashboardstats);
 
 // --- 📱 USER PANEL ROUTES ---
 app.use("/api/auth", userAuthRoutes);
