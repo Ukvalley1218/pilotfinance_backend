@@ -1,26 +1,23 @@
 import multer from "multer";
-import path from "path";
-import fs from "fs";
+
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import cloudinary from "../services/cloudinary.service.js";
+
 
 // FIX: Standardize root pathing for production environments
 // This ensures we are always relative to the project execution root
-const rootDir = path.resolve(process.cwd());
+
 
 /**
  * Ensures a directory exists, creating it recursively if necessary.
  */
-const ensureDir = (dirPath) => {
-  if (!fs.existsSync(dirPath)) {
-    fs.mkdirSync(dirPath, { recursive: true });
-  }
-};
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    // Default fallback folder
+
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
     let folder = "documents";
 
-    // 1. Logic for folder categorization based on fieldname
     const kycFields = [
       "front",
       "back",
@@ -41,9 +38,7 @@ const storage = multer.diskStorage({
       file.fieldname === "signature"
     ) {
       folder = "signatures";
-    }
-    // 2. Secondary logic: detect based on URL path if fieldname is generic
-    else if (req.originalUrl.includes("signatures")) {
+    } else if (req.originalUrl.includes("signatures")) {
       folder = "signatures";
     } else if (req.originalUrl.includes("kyc")) {
       folder = "kyc";
@@ -54,35 +49,17 @@ const storage = multer.diskStorage({
       folder = "avatars";
     }
 
-    // Use path.join for cross-platform compatibility (Windows uses \, Linux uses /)
-    const uploadPath = path.join(rootDir, "uploads", folder);
+    const uniqueSuffix =
+      Date.now() + "-" + Math.round(Math.random() * 1e9);
 
-    ensureDir(uploadPath);
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    // Determine a clean prefix based on the destination or fieldname
-    let prefix = file.fieldname.toUpperCase();
-
-    // Standardize signature prefixes
-    if (
-      file.fieldname === "document" ||
-      file.fieldname === "signature" ||
-      req.originalUrl.includes("signatures")
-    ) {
-      prefix = "SIG";
-    }
-
-    // Unique suffix with high entropy to prevent filename collisions
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-
-    // Extract and sanitize extension
-    const extension = path.extname(file.originalname).toLowerCase();
-
-    // Final result: e.g., SIG-1700000000000-123456789.png
-    cb(null, `${prefix}-${uniqueSuffix}${extension}`);
+    return {
+      folder: `pilotfinance/${folder}`,
+      resource_type: "auto", // allows pdf, doc, images
+      public_id: `${file.fieldname}-${uniqueSuffix}`,
+    };
   },
 });
+
 
 /**
  * Filters files to ensure only allowed types are uploaded.

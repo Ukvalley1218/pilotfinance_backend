@@ -9,29 +9,30 @@ import {
   deleteDocument,
 } from "../../controllers/admin/documentController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
+import { upload } from "../../middlewares/uploadMiddleware.js";
 
 const router = express.Router();
 
 // Configure storage logic
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const dir = "uploads/documents/";
-    // Double check directory exists to prevent 500 error
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    cb(null, dir);
-  },
-  filename: (req, file, cb) => {
-    // Unique filename with timestamp to prevent overwriting
-    cb(null, `${Date.now()}-${file.originalname}`);
-  },
-});
+// const storage = multer.diskStorage({
+//   destination: (req, file, cb) => {
+//     const dir = "uploads/documents/";
+//     // Double check directory exists to prevent 500 error
+//     if (!fs.existsSync(dir)) {
+//       fs.mkdirSync(dir, { recursive: true });
+//     }
+//     cb(null, dir);
+//   },
+//   filename: (req, file, cb) => {
+//     // Unique filename with timestamp to prevent overwriting
+//     cb(null, `${Date.now()}-${file.originalname}`);
+//   },
+// });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB Limit for Admin uploads
-});
+// const upload = multer({
+//   storage,
+//   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB Limit for Admin uploads
+// });
 
 // --- ROUTES ---
 

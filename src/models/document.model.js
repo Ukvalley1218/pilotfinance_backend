@@ -26,6 +26,10 @@ const documentSchema = new mongoose.Schema(
       type: String,
       required: [true, "File path is required"],
     },
+    publicId: {
+  type: String,
+},
+
   },
   { timestamps: true }
 );

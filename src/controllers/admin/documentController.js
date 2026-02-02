@@ -2,6 +2,7 @@ import Document from "../../models/document.model.js"; // Removed curly braces
 import { Notification } from "../../models/notification.model.js"; // Path for your unified folder
 import fs from "fs";
 import path from "path";
+import cloudinary from "../../services/cloudinary.service.js";
 
 /**
  * @desc Get all documents with category filtering
@@ -30,51 +31,33 @@ export const uploadDocument = async (req, res) => {
   try {
     const { name, category, version, status } = req.body;
 
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        message: "No file detected. Please select a document to upload.",
-      });
-    }
+    if (!req.file)
+      return res.status(400).json({ success: false, message: "No file uploaded" });
 
-    // Your important category check - RESTORED
-    if (!category) {
-      return res.status(400).json({
-        success: false,
-        message: "Category is required for upload.",
-      });
-    }
-
-    const fileUrl = `/uploads/documents/${req.file.filename}`;
+    if (!category)
+      return res.status(400).json({ success: false, message: "Category is required" });
 
     const newDoc = await Document.create({
       name: name || req.file.originalname,
       category,
       version: version || "v1.0",
       status: status || "Active",
-      fileUrl,
+      fileUrl: req.file.path, // 🌩 Cloudinary URL
+      publicId: req.file.filename, // Save for deletion
     });
 
-    // Your specific notification link - RESTORED
     await Notification.create({
       type: "success",
       message: `New Document Uploaded: ${newDoc.name}`,
       link: `/admin/digital-documents`,
     });
 
-    res.status(201).json({
-      success: true,
-      message: "Document successfully synced to storage",
-      data: newDoc,
-    });
+    res.status(201).json({ success: true, data: newDoc });
   } catch (error) {
-    console.error("Upload Controller Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Database sync failed: " + error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
 
 /**
  * @desc Update Document Metadata (Handles file replacement cleanup)
@@ -82,49 +65,37 @@ export const uploadDocument = async (req, res) => {
 export const updateDocument = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, version, status } = req.body;
-
     const document = await Document.findById(id);
-    if (!document) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Document not found" });
-    }
+    if (!document) return res.status(404).json({ success: false, message: "Not found" });
 
-    // File replacement logic - RESTORED
     if (req.file) {
-      const oldFilePath = path.join(process.cwd(), document.fileUrl);
-      if (fs.existsSync(oldFilePath)) {
-        fs.unlinkSync(oldFilePath);
+      // Delete old file from Cloudinary
+      if (document.publicId) {
+        await cloudinary.uploader.destroy(document.publicId, { resource_type: "raw" });
       }
-      document.fileUrl = `/uploads/documents/${req.file.filename}`;
+
+      document.fileUrl = req.file.path;
+      document.publicId = req.file.filename;
     }
 
-    document.name = name || document.name;
-    document.version = version || document.version;
-    document.status = status || document.status;
+    document.name = req.body.name || document.name;
+    document.version = req.body.version || document.version;
+    document.status = req.body.status || document.status;
 
-    const updatedDoc = await document.save();
+    const updated = await document.save();
 
-    // Your specific notification link - RESTORED
     await Notification.create({
       type: "info",
-      message: `Document Modified: ${updatedDoc.name}`,
+      message: `Document Modified: ${updated.name}`,
       link: `/admin/digital-documents`,
     });
 
-    res.status(200).json({
-      success: true,
-      message: "Document metadata updated successfully",
-      data: updatedDoc,
-    });
+    res.status(200).json({ success: true, data: updated });
   } catch (error) {
-    console.error("Update Document Error:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to update document" });
+    res.status(500).json({ success: false, message: "Update failed" });
   }
 };
+
 
 /**
  * @desc Delete Document record and cleanup physical file
@@ -133,39 +104,23 @@ export const deleteDocument = async (req, res) => {
   try {
     const { id } = req.params;
     const doc = await Document.findById(id);
+    if (!doc) return res.status(404).json({ success: false, message: "Not found" });
 
-    if (!doc) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Document not found" });
-    }
-
-    // Physical file deletion - RESTORED
-    if (doc.fileUrl) {
-      const filePath = path.join(process.cwd(), doc.fileUrl);
-      if (fs.existsSync(filePath)) {
-        fs.unlinkSync(filePath);
-      }
+    if (doc.publicId) {
+      await cloudinary.uploader.destroy(doc.publicId, { resource_type: "raw" });
     }
 
     await Document.findByIdAndDelete(id);
 
-    // Your specific notification link - RESTORED
     await Notification.create({
       type: "warning",
       message: `Document Deleted: ${doc.name}`,
       link: `/admin/digital-documents`,
     });
 
-    res.status(200).json({
-      success: true,
-      message: "Document and physical file removed successfully",
-    });
+    res.status(200).json({ success: true, message: "Deleted successfully" });
   } catch (error) {
-    console.error("Delete operation failed:", error);
-    res.status(500).json({
-      success: false,
-      message: "Internal server error during deletion",
-    });
+    res.status(500).json({ success: false, message: "Deletion failed" });
   }
 };
+
