@@ -39,7 +39,7 @@ export const uploadDocument = async (req, res) => {
 
     const newDoc = await Document.create({
       name: name || req.file.originalname,
-      category,
+       category: req.body.category,
       version: version || "v1.0",
       status: status || "Active",
       fileUrl: req.file.path, // 🌩 Cloudinary URL
@@ -53,9 +53,10 @@ export const uploadDocument = async (req, res) => {
     });
 
     res.status(201).json({ success: true, data: newDoc });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
+  }  catch (error) {
+  console.error("UPLOAD ERROR:", error); // 🔥 Add this
+  res.status(500).json({ success: false, message: error.message });
+}
 };
 
 
