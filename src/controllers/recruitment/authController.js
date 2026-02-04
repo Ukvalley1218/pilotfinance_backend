@@ -483,7 +483,7 @@ export const fundStudentLoan = async (req, res) => {
     );
     const totalPayableWithInterest = emi * n;
 
-    loan.status = "Disbursed";
+    loan.status = "Pending";
     loan.disbursementDate = new Date();
     loan.principalRequested = P;
     loan.totalWithInterest = totalPayableWithInterest;
