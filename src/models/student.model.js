@@ -32,6 +32,7 @@ const studentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+   
 
     // --- KYC & ADDRESS DATA (From User Panel Uploads) ---
     kycData: {

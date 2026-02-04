@@ -21,6 +21,8 @@ import {
   getPartnerLoans,
   fundStudentLoan,
   getWalletData,
+  addStudentByPartner,
+  deleteStudentByPartner,
 } from "../../controllers/recruitment/authController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
 
@@ -102,6 +104,7 @@ router.get("/partners", protect, getAllPartners);
 // 4. Student Management
 router.get("/available-students", protect, getAvailableStudents);
 router.post("/link-user", protect, linkStudentToPartner);
+router.post("/add-user", protect, addStudentByPartner);
 router.get("/my-students", protect, getReferredStudents);
 router.put("/verify-student/:studentId", protect, verifyStudent);
 router.get(
@@ -109,6 +112,7 @@ router.get(
   protect,
   getStudentSignaturesForPartner,
 );
+router.delete("/delete-user/:studentId",protect,deleteStudentByPartner)
 
 // 5. Loan Ledger & Funding
 router.get("/loans", protect, getPartnerLoans);

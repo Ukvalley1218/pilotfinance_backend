@@ -10,6 +10,7 @@ import { Partner } from "../../models/partner.model.js";
 import UserDocuments from "../../models/UserDocuments.js";
 import { generateToken } from "../../utils/generateToken.js";
 import { login as sharedLogin } from "../user/authController.js";
+import bcrypt from "bcryptjs";
 
 // --- HELPER: LOG ACTIVITY ---
 const logPartnerActivity = async (partnerId, action, details, category) => {
@@ -550,5 +551,116 @@ export const verifyStudent = async (req, res) => {
     res.status(200).json({ success: true, data: updatedStudent });
   } catch (err) {
     res.status(500).json({ success: false });
+  }
+};
+
+
+// --- ADD STUDENT BY PARTNER ---
+export const addStudentByPartner = async (req, res) => {
+  try {
+    const partnerId = req.user.id;
+    const {
+      name,
+      email,
+      phone,
+      password, // Partner sets this
+      course,
+      uni,
+      requestedAmount,
+      country,
+    } = req.body;
+
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({ success: false, msg: "Missing required fields" });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 1️⃣ Check if user already exists
+    const existingUser = await User.findOne({ email: cleanEmail });
+    if (existingUser) {
+      return res.status(400).json({ success: false, msg: "Email already registered" });
+    }
+
+    // 2️⃣ Create LOGIN ACCOUNT (User table)
+    const user = await User.create({
+      fullName: name,
+      email: cleanEmail,
+      phone,
+      password, // 🔥 Auto-hashed by pre("save") hook
+      role: "student",
+    });
+
+    // 3️⃣ Create STUDENT PROFILE
+    const student = await Student.create({
+      name,
+      email: cleanEmail,
+      phone,
+      course,
+      uni,
+      requestedAmount,
+      country,
+      userId: user._id,      // 🔗 Link to login account
+      referredBy: partnerId, // 🔗 Link to partner
+      status: "Pending",
+      kycStatus: "Pending",
+    });
+
+    // 4️⃣ Add to Partner’s list
+    await User.findByIdAndUpdate(partnerId, {
+      $addToSet: { referredStudents: student._id },
+    });
+
+    await logPartnerActivity(
+      partnerId,
+      "Student Added",
+      `Added ${name}`,
+      "Student"
+    );
+
+    res.status(201).json({ success: true, student });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, msg: "Failed to add student" });
+  }
+};
+
+// --- 19. DELETE STUDENT (PARTNER CONTROLLED) ---
+export const deleteStudentByPartner = async (req, res) => {
+  try {
+    const partnerId = req.user.id;
+    const { studentId } = req.params;
+
+    const student = await Student.findOne({
+      _id: studentId,
+      referredBy: partnerId,
+    });
+
+    if (!student) {
+      return res.status(404).json({ success: false, msg: "Student not found" });
+    }
+
+    // Remove student reference from partner
+    await User.findByIdAndUpdate(partnerId, {
+      $pull: { referredStudents: student._id },
+    });
+
+    // Remove related loans & transactions (optional safety cleanup)
+    await Loan.deleteMany({ studentId: student._id });
+    await Transaction.deleteMany({ studentId: student._id });
+
+    await student.deleteOne();
+
+    await logPartnerActivity(
+      partnerId,
+      "Student Deleted",
+      `Deleted ${student.name}`,
+      "Student"
+    );
+
+    res.status(200).json({ success: true, msg: "Student deleted successfully" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, msg: "Delete failed" });
   }
 };
