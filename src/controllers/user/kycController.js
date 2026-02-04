@@ -115,7 +115,7 @@ export const submitKycDocuments = async (req, res) => {
   bankName,
   ifscCode,
   idType,
-  front: getUrl("front"),
+  front: getUrl("back"),
   back: getUrl("back"),
   idFront: getUrl("idFront"),
   idBack: getUrl("idBack"),
