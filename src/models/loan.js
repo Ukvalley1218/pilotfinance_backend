@@ -113,6 +113,7 @@ const loanSchema = new mongoose.Schema(
         "Disbursed",
         "Closed",
         "Completed",
+        "Requested"
       ],
       default: "Pending",
     },

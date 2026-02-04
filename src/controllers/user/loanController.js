@@ -40,6 +40,18 @@ export const submitLoanRequest = async (req, res) => {
       });
     }
 
+    const existingActiveLoan = await Loan.findOne({
+      userId,
+      status: { $nin: ["Completed", "Rejected", "Closed"] }, // NOT completed
+    });
+
+    if (existingActiveLoan) {
+      return res.status(400).json({
+        success: false,
+        msg: "You already have an active loan. Please complete it before applying for a new one.",
+      });
+    }
+
     // EMI CALCULATIONS
     const n = parseInt(period) || 12;
     const P = Number(totalAmount); // Principal requested
@@ -76,7 +88,7 @@ export const submitLoanRequest = async (req, res) => {
       period: `${n} Months`,
       payoffDate,
       lastFourDigits: lastFourDigits || "0000",
-      status: "Pending",
+      status: "Requested",
     });
 
     await newLoan.save();
