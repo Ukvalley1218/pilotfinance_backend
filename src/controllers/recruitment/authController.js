@@ -88,10 +88,9 @@ export const updatePartnerProfile = async (req, res) => {
     } = req.body;
 
     const files = req.files || {};
-    const getFilePath = (fieldName) =>
-      files[fieldName]
-        ? `/uploads/partners/${files[fieldName][0].filename}`
-        : undefined;
+   const getFilePath = (fieldName) =>
+  files[fieldName] ? files[fieldName][0].path : undefined;
+
 
     const updateData = {
       companyName: agencyName,
@@ -322,7 +321,8 @@ export const updateMe = async (req, res) => {
       address,
       businessType,
     };
-    if (req.file) updateFields.avatar = `/uploads/avatars/${req.file.filename}`;
+   if (req.file) updateFields.avatar = req.file.path;
+
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { $set: updateFields },

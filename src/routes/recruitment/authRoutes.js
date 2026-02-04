@@ -1,6 +1,7 @@
 import express from "express";
 import multer from "multer";
-import path from "path";
+import { CloudinaryStorage } from "multer-storage-cloudinary";
+import cloudinary from "../../services/cloudinary.service.js";
 // FIXED: Using named imports to prevent 'undefined' handler errors
 import {
   registerPartner,
@@ -28,32 +29,33 @@ import { protect } from "../../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-// --- 1. MULTER CONFIGURATIONS ---
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/partners");
-  },
-  filename: (req, file, cb) => {
-    cb(null, `PRT-${Date.now()}-${file.originalname}`);
-  },
-});
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: async (req, file) => {
+    let folder = "partners";
 
-const avatarStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "./uploads/avatars");
-  },
-  filename: (req, file, cb) => {
-    cb(null, `AVATAR-${Date.now()}${path.extname(file.originalname)}`);
+    if (file.fieldname === "avatar") folder = "avatars";
+    if (["regCert", "gstCert", "idProof", "mou"].includes(file.fieldname)) {
+      folder = "partner-kyc";
+    }
+
+    return {
+      folder: `pilotfinance/${folder}`,
+      resource_type: "auto",
+      public_id: `${file.fieldname}-${Date.now()}`,
+    };
   },
 });
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|pdf/;
-  const isMatch = allowedTypes.test(
-    path.extname(file.originalname).toLowerCase(),
-  );
-  if (isMatch) return cb(null, true);
-  cb(new Error("Only images (jpeg, jpg, png) and PDFs are allowed"));
+  const allowedTypes = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "application/pdf",
+  ];
+  if (allowedTypes.includes(file.mimetype)) cb(null, true);
+  else cb(new Error("Only JPG, PNG, and PDF allowed"), false);
 };
 
 const upload = multer({
@@ -62,11 +64,6 @@ const upload = multer({
   limits: { fileSize: 10 * 1024 * 1024 },
 });
 
-const uploadAvatar = multer({
-  storage: avatarStorage,
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
-});
 
 // ---------- RECRUITMENT AUTH ROUTES (Public) ----------
 router.post("/register", registerPartner);
@@ -76,7 +73,8 @@ router.post("/login", login);
 
 // 1. Profile & Account Management
 router.get("/me", protect, getMe);
-router.put("/update-me", protect, uploadAvatar.single("avatar"), updateMe);
+router.put("/update-me", protect, upload.single("avatar"), updateMe);
+
 
 router.put(
   "/update-profile",
@@ -89,6 +87,7 @@ router.put(
   ]),
   updatePartnerProfile,
 );
+
 
 // 2. Dashboard, Stats & Activity
 router.get("/dashboard-stats", protect, getDashboardStats);
