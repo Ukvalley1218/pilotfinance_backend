@@ -1,4 +1,5 @@
 import UserDocuments from "../../models/UserDocuments.js";
+import cloudinary from "../../services/cloudinary.service.js";
 
 // --- 1. FETCH ALL SAVED DOCUMENTS ---
 export const getUserDocuments = async (req, res) => {
@@ -52,29 +53,28 @@ export const uploadDocument = async (req, res) => {
 
     const index = parseInt(docId) - 1;
 
-    if (userDocs.documents[index]) {
-      userDocs.documents.forEach((doc) => {
-        if (doc.status === "Pending") {
-          doc.status = "Sign Now";
-        }
-      });
-
-      userDocs.documents[index].status = "Uploaded";
-      const folder = req.file.filename.startsWith("SIG") ? "signatures" : "kyc";
-
-      userDocs.documents[index].fileUrl =
-        `/uploads/${folder}/${req.file.filename}`;
-      userDocs.documents[index].fileType = req.file.mimetype;
-      userDocs.documents[index].uploadedAt = Date.now();
-
-      await userDocs.save();
-
-      return res.status(200).json({
-        success: true,
-        msg: "Document synchronized successfully",
-        data: userDocs,
-      });
+  if (userDocs.documents[index]) {
+  userDocs.documents.forEach((doc) => {
+    if (doc.status === "Pending") {
+      doc.status = "Sign Now";
     }
+  });
+
+  userDocs.documents[index].status = "Uploaded";
+
+  userDocs.documents[index].fileUrl = req.file.path; // ✅ Cloudinary URL
+  userDocs.documents[index].fileType = req.file.mimetype;
+  userDocs.documents[index].uploadedAt = Date.now();
+
+  await userDocs.save();
+
+  return res.status(200).json({
+    success: true,
+    msg: "Document synchronized successfully",
+    data: userDocs,
+  });
+}
+
 
     res.status(404).json({ success: false, msg: "Invalid document slot" });
   } catch (err) {

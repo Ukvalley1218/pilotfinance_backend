@@ -5,6 +5,9 @@ import jwt from "jsonwebtoken";
 import transporter from "../../utils/mail.js";
 import { generateToken } from "../../utils/generateToken.js";
 import fetch from "node-fetch";
+import cloudinary from "../../services/cloudinary.service.js";
+import streamifier from "streamifier";
+
 
 // --- 1. GET CURRENT USER ---
 export const getMe = async (req, res) => {
@@ -63,20 +66,44 @@ export const updateProfile = async (req, res) => {
 // --- 3. UPDATE PROFILE PICTURE ---
 export const updateAvatar = async (req, res) => {
   try {
-    if (!req.file)
+    if (!req.file) {
       return res.status(400).json({ success: false, msg: "No file uploaded" });
+    }
 
-    const avatarPath = `${req.protocol}://${req.get("host")}/uploads/avatars/${
-      req.file.filename
-    }`;
+    // Upload buffer to Cloudinary
+    const streamUpload = (buffer) =>
+      new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: "pilot-finance/avatars",
+            public_id: `user-${req.user.id}`,
+            overwrite: true,
+          },
+          (error, result) => {
+            if (result) resolve(result);
+            else reject(error);
+          }
+        );
+        streamifier.createReadStream(buffer).pipe(stream);
+      });
 
-    await User.findByIdAndUpdate(req.user.id, { avatar: avatarPath });
+    const result = await streamUpload(req.file.buffer);
 
-    return res.status(200).json({ success: true, avatarUrl: avatarPath });
+    // Save Cloudinary URL to user
+    await User.findByIdAndUpdate(req.user.id, {
+      avatar: result.secure_url,
+    });
+
+    return res.status(200).json({
+      success: true,
+      avatarUrl: result.secure_url,
+    });
   } catch (err) {
+    console.error("CLOUDINARY AVATAR ERROR:", err);
     return res.status(500).json({ success: false, msg: "Image upload failed" });
   }
 };
+
 
 // --- 4. REGISTER (SYNCED WITH ADMIN) ---
 export const register = async (req, res) => {

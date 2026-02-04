@@ -102,27 +102,29 @@ export const submitKycDocuments = async (req, res) => {
 
     const currentKycData = user.kycData || {};
 
-    const getPath = (fieldname) =>
-      files && files[fieldname]
-        ? `/uploads/kyc/${files[fieldname][0].filename}`
-        : currentKycData[fieldname];
+    const getUrl = (fieldname) =>
+  files && files[fieldname]
+    ? files[fieldname][0].path   // Cloudinary URL
+    : currentKycData[fieldname];
 
-    const updatedKycData = {
-      ...currentKycData,
-      documentType,
-      bankAccount,
-      bankName,
-      ifscCode,
-      idType,
-      front: getPath("front"),
-      back: getPath("back"),
-      idFront: getPath("idFront"),
-      idBack: getPath("idBack"),
-      selfie: getPath("selfie"),
-      passbook: getPath("passbook"),
-      loa: getPath("loa"),
-      submittedAt: Date.now(),
-    };
+
+   const updatedKycData = {
+  ...currentKycData,
+  documentType,
+  bankAccount,
+  bankName,
+  ifscCode,
+  idType,
+  front: getUrl("front"),
+  back: getUrl("back"),
+  idFront: getUrl("idFront"),
+  idBack: getUrl("idBack"),
+  selfie: getUrl("selfie"),
+  passbook: getUrl("passbook"),
+  loa: getUrl("loa"),
+  submittedAt: Date.now(),
+};
+
 
     // Update User Model
     user.kycData = updatedKycData;
@@ -163,9 +165,9 @@ export const submitAddressProof = async (req, res) => {
 
     const currentKyc = user.kycData || {};
 
-    const addressProofFile = req.file
-      ? `/uploads/kyc/${req.file.filename}`
-      : currentKyc.addressProofFile;
+   const addressProofFile = req.file
+  ? req.file.path   // Cloudinary URL
+  : currentKyc.addressProofFile;
 
     const updatedKycData = {
       ...currentKyc,

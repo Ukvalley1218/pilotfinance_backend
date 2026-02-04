@@ -18,7 +18,7 @@ router.get("/", protect, getDashboardData);
  * @route   GET /api/dashboard/notifications
  * @desc    Get dynamic application status alerts and KYC verification updates
  * @access  Private (Requires Student Token)
- * @url     http://localhost:5000/api/dashboard/notifications
+ * @url     https://pilotfinance-backend.onrender.com/api/dashboard/notifications
  */
 router.get("/notifications", protect, getNotifications);
 

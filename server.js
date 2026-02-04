@@ -89,14 +89,14 @@ app.use(
         "default-src": ["'self'"],
         "connect-src": [
           "'self'",
-          "http://localhost:5000",
+          "https://pilotfinance-backend.onrender.com",
           "https://pilotfinance-backend.onrender.com",
         ],
         "img-src": [
           "'self'",
           "data:",
           "blob:",
-          "http://localhost:5000",
+          "https://pilotfinance-backend.onrender.com",
           "https://pilotfinance-backend.onrender.com",
           "https://ui-avatars.com",
         ],

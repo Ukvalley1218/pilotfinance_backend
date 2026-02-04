@@ -11,24 +11,15 @@ import { protect } from "../../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-// --- MULTER CONFIGURATION FOR AVATARS ---
-const storage = multer.diskStorage({
-  destination: "./uploads/avatars",
-  filename: (req, file, cb) => {
-    // Saves file as: userID-timestamp.extension
-    // req.user.id is available thanks to the 'protect' middleware
-    cb(null, `${req.user.id}-${Date.now()}${path.extname(file.originalname)}`);
-  },
-});
 
+
+// Use MEMORY storage instead of disk
 const upload = multer({
-  storage,
-  limits: { fileSize: 2000000 }, // 2MB Max
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB
   fileFilter: (req, file, cb) => {
     const filetypes = /jpeg|jpg|png/;
-    const extname = filetypes.test(
-      path.extname(file.originalname).toLowerCase()
-    );
+    const extname = filetypes.test(file.originalname.toLowerCase());
     if (extname) return cb(null, true);
     cb(new Error("Only images (jpeg, jpg, png) are allowed"));
   },
