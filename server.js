@@ -21,6 +21,7 @@ import adminDocRoutes from "./src/routes/admin/documentRoutes.js";
 import financeRoutes from "./src/routes/admin/financeRoutes.js";
 import adminNotificationRoutes from "./src/routes/admin/notificationRoutes.js";
 import dashboardstats from "./src/routes/admin/dashboard.stats.js";
+import adminKycRoutes from "./src/routes/admin/admin.kyc.routes.js";;
 
 // --- IMPORT USER ROUTES ---
 import userAuthRoutes from "./src/routes/user/authRoutes.js";
@@ -161,6 +162,7 @@ app.use("/api/admin/document", adminDocRoutes);
 app.use("/api/admin/finance", financeRoutes);
 app.use("/api/admin/notification", adminNotificationRoutes);
 app.use("/api/admin/dashboard/stats", dashboardstats);
+app.use("/api/admin/kyc", adminKycRoutes);
 
 // --- 📱 USER PANEL ROUTES ---
 app.use("/api/auth", userAuthRoutes);
