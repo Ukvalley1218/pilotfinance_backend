@@ -12,13 +12,11 @@ import streamifier from "streamifier";
 // --- 1. GET CURRENT USER ---
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select(
-      "-password -otpCode -otpExpires",
-    );
-    if (!user)
-      return res.status(404).json({ success: false, msg: "User not found" });
+    const student = await Student.findById(req.user.id).select("-password -otpCode -otpExpires");
+if (!student) return res.status(404).json({ msg: "Student not found" });
 
-    return res.status(200).json({ success: true, data: user });
+res.status(200).json({ success: true, data: student });
+
   } catch (err) {
     return res.status(500).json({ success: false, msg: "Server Error" });
   }
@@ -27,41 +25,25 @@ export const getMe = async (req, res) => {
 // --- 2. UPDATE PROFILE TEXT DATA ---
 export const updateProfile = async (req, res) => {
   try {
-    const fieldsToUpdate = [
-      "fullName",
-      "phone",
-      "dob",
-      "state",
-      "address",
-      "education",
-      "gender",
-      "maritalStatus",
-    ];
+    const fields = ["name", "phone", "address", "dob", "education", "gender"];
 
     let updateObj = {};
-    fieldsToUpdate.forEach((field) => {
+    fields.forEach(field => {
       if (req.body[field] !== undefined) updateObj[field] = req.body[field];
     });
 
-    const updatedUser = await User.findByIdAndUpdate(
+    const updatedStudent = await Student.findByIdAndUpdate(
       req.user.id,
       { $set: updateObj },
-      { new: true, runValidators: true },
+      { new: true }
     ).select("-password");
 
-    // SYNC: Update the corresponding Student model so Admin sees changes
-    await Student.findOneAndUpdate(
-      { userId: req.user.id },
-      { $set: { name: updateObj.fullName, phone: updateObj.phone } },
-    );
-
-    return res
-      .status(200)
-      .json({ success: true, msg: "Profile updated", data: updatedUser });
-  } catch (err) {
-    return res.status(500).json({ success: false, msg: "Update failed" });
+    res.status(200).json({ success: true, data: updatedStudent });
+  } catch {
+    res.status(500).json({ msg: "Update failed" });
   }
 };
+
 
 // --- 3. UPDATE PROFILE PICTURE ---
 export const updateAvatar = async (req, res) => {
@@ -90,9 +72,8 @@ export const updateAvatar = async (req, res) => {
     const result = await streamUpload(req.file.buffer);
 
     // Save Cloudinary URL to user
-    await User.findByIdAndUpdate(req.user.id, {
-      avatar: result.secure_url,
-    });
+    await Student.findByIdAndUpdate(req.user.id, { avatar: result.secure_url });
+
 
     return res.status(200).json({
       success: true,
@@ -105,161 +86,54 @@ export const updateAvatar = async (req, res) => {
 };
 
 
-// --- 4. REGISTER (SYNCED WITH ADMIN) ---
-export const register = async (req, res) => {
-  try {
-    const { fullName, email, password, phone } = req.body;
-    if (!fullName || !email || !password)
-      return res.status(400).json({ msg: "All fields are required" });
 
-    const cleanEmail = email.toLowerCase().trim();
-    let userExists = await User.findOne({ email: cleanEmail });
-    if (userExists)
-      return res.status(400).json({ msg: "Email already registered" });
-
-    // A. Create User record (Auth)
-    const user = new User({
-      fullName,
-      email: cleanEmail,
-      password,
-      phone,
-      role: "student",
-    });
-    await user.save();
-
-    // B. Create Student record (Admin Visibility Bridge)
-    await Student.create({
-      userId: user._id,
-      name: fullName,
-      email: cleanEmail,
-      phone: phone || "Not Provided",
-      status: "Pending",
-    });
-
-    const token = generateToken(user._id);
-    return res.status(201).json({
-      success: true,
-      token,
-      userId: user._id,
-      user: {
-        _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        isPhoneVerified: user.isPhoneVerified,
-      },
-    });
-  } catch (err) {
-    console.error("REGISTRATION SYNC ERROR:", err);
-    return res.status(500).json({ msg: "Registration failed" });
-  }
-};
 
 // --- 5. LOGIN (Updated for Smart Redirect) ---
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password)
-      return res.status(400).json({ msg: "Enter credentials" });
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) return res.status(400).json({ msg: "Invalid credentials" });
+    const student = await Student.findOne({ email: email.toLowerCase().trim() });
+    if (!student) return res.status(400).json({ msg: "Invalid credentials" });
 
-    const isMatch = await user.comparePassword(password);
+    const isMatch = await bcrypt.compare(password, student.password);
     if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
 
-    const token = generateToken(user._id);
+    const token = generateToken(student._id);
 
-    // Explicitly returning isPhoneVerified so frontend can redirect to Dashboard
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       token,
       user: {
-        _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        isPhoneVerified: user.isPhoneVerified,
-        avatar: user.avatar,
+        _id: student._id,
+        fullName: student.name,
+        email: student.email,
+        role: "Student",
+        avatar: student.avatar,
       },
     });
-  } catch (err) {
-    return res.status(500).json({ msg: "Login error" });
+  } catch {
+    res.status(500).json({ msg: "Login error" });
   }
 };
 
-// --- 6. GOOGLE LOGIN (SYNCED WITH ADMIN) ---
-export const googleLogin = async (req, res) => {
-  try {
-    const { token } = req.body;
-    const googleRes = await fetch(
-      `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${token}`,
-    );
-    const googleUser = await googleRes.json();
 
-    if (!googleUser.email)
-      return res.status(400).json({ msg: "Google authentication failed" });
-
-    let user = await User.findOne({
-      email: googleUser.email.toLowerCase().trim(),
-    });
-
-    if (!user) {
-      // Create new User
-      user = new User({
-        fullName: googleUser.name,
-        email: googleUser.email.toLowerCase().trim(),
-        password: Math.random().toString(36).slice(-10),
-        avatar: googleUser.picture,
-        isEmailVerified: true,
-        isPhoneVerified: true, // Google accounts verified by default
-        role: "student",
-      });
-      await user.save();
-
-      // Create linked Student for Admin Panel
-      await Student.create({
-        userId: user._id,
-        name: googleUser.name,
-        email: googleUser.email.toLowerCase().trim(),
-        status: "Pending",
-      });
-    }
-
-    const jwtToken = generateToken(user._id);
-    return res.status(200).json({
-      success: true,
-      token: jwtToken,
-      user: {
-        _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        isPhoneVerified: user.isPhoneVerified,
-        avatar: user.avatar,
-      },
-    });
-  } catch (err) {
-    console.error("GOOGLE LOGIN SYNC ERROR:", err);
-    return res.status(500).json({ msg: "Google Login Error" });
-  }
-};
 
 // --- 7. FORGOT PASSWORD ---
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) return res.status(404).json({ msg: "User not found" });
+   const student = await Student.findOne({ email: email });
+    if (!student) return res.status(404).json({ msg: "User not found" });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    user.otpCode = otp;
-    user.otpExpires = new Date(Date.now() + 10 * 60000);
-    await user.save();
+ student.otpCode = otp;
+student.otpExpires = new Date(Date.now() + 10 * 60000);
+    await student.save();
 
     await transporter.sendMail({
       from: `"Pilot Finance" <${process.env.EMAIL_USER}>`,
-      to: user.email,
+      to: student.email,
       subject: "Password Reset OTP",
       html: `<h2>OTP: ${otp}</h2>`,
     });
@@ -273,18 +147,18 @@ export const forgotPassword = async (req, res) => {
 export const resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
-    const user = await User.findOne({
-      email: email.toLowerCase().trim(),
-      otpCode: otp,
-      otpExpires: { $gt: Date.now() },
-    });
+    const student = await Student.findOne({
+  email: cleanEmail,
+  otpCode: otp,
+  otpExpires: { $gt: Date.now() }
+});
 
-    if (!user) return res.status(400).json({ msg: "Invalid or expired OTP" });
+    if (!student) return res.status(400).json({ msg: "Invalid or expired OTP" });
 
-    user.password = newPassword;
-    user.otpCode = undefined;
-    user.otpExpires = undefined;
-    await user.save();
+    student.password = await bcrypt.hash(newPassword, 10);
+student.otpCode = undefined;
+student.otpExpires = undefined;
+await student.save();
 
     return res
       .status(200)
@@ -295,32 +169,7 @@ export const resetPassword = async (req, res) => {
 };
 
 // --- 9. SEND VERIFICATION OTP ---
-// export const sendOTP = async (req, res) => {
-//   try {
-//     const { email } = req.body;
-//     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-//     const user = await User.findOneAndUpdate(
-//       { email: email.toLowerCase().trim() },
-//       { otpCode: otp, otpExpires: new Date(Date.now() + 10 * 60000) },
-//       { new: true },
-//     );
-    
 
-//     if (!user) return res.status(404).json({ msg: "User not found" });
-
-//     await transporter.sendMail({
-//       from: `"Pilot Finance" <${process.env.EMAIL_USER}>`,
-//       to: user.email,
-//       subject: "Verification Code",
-//       html: `<h2>Your verification code is: ${otp}</h2>`,
-//     });
-//     return res
-//       .status(200)
-//       .json({ success: true, msg: "Code sent", userId: user._id });
-//   } catch (err) {
-//     return res.status(500).json({ success: false, msg: "Failed to send OTP" });
-//   }
-// };
 export const sendOTP = async (req, res) => {
   try {
     const { email } = req.body;
@@ -332,16 +181,14 @@ export const sendOTP = async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
     // 1️⃣ Store OTP in DB FIRST
-    const user = await User.findOneAndUpdate(
-      { email: cleanEmail },
-      {
-        otpCode: otp,
-        otpExpires: new Date(Date.now() + 10 * 60 * 1000),
-      },
-      { new: true }
-    );
+    const student = await Student.findOneAndUpdate(
+  { email: cleanEmail },
+  { otpCode: otp, otpExpires: new Date(Date.now() + 10 * 60 * 1000) },
+  { new: true }
+);
+
 console.log("Otp",otp)
-    if (!user) {
+    if (!student) {
       return res.status(404).json({ msg: "User not found" });
     }
 
@@ -349,7 +196,7 @@ console.log("Otp",otp)
     try {
       await transporter.sendMail({
         from: `"Pilot Finance" <${process.env.EMAIL_USER}>`,
-        to: user.email,
+        to: student.email,
         subject: "Verification Code",
         html: `<h2>Your verification code is: ${otp}</h2>`,
       });
@@ -361,7 +208,7 @@ console.log("Otp",otp)
     return res.status(200).json({
       success: true,
       msg: "OTP generated successfully",
-      userId: user._id,
+      userId: student._id,
     });
 
   } catch (err) {
@@ -378,29 +225,28 @@ console.log("Otp",otp)
 export const verifyOTP = async (req, res) => {
   try {
     const { userId, otp } = req.body;
-    const user = await User.findById(userId);
+   const student = await Student.findById(userId);
 
-    if (!user || user.otpCode !== otp || user.otpExpires < Date.now()) {
-      return res.status(400).json({ msg: "Invalid or expired code" });
-    }
+    if (!student || student.otpCode !== otp || student.otpExpires < Date.now()) {
+  return res.status(400).json({ msg: "Invalid or expired code" });
+}
 
-    user.isEmailVerified = true;
-    user.isPhoneVerified = true;
 
-    user.otpCode = undefined;
-    user.otpExpires = undefined;
-    await user.save();
+  student.isEmailVerified = true;
+student.otpCode = undefined;
+student.otpExpires = undefined;
+await student.save();
 
-    const token = generateToken(user._id);
+    const token = generateToken(student._id);
     return res.status(200).json({
       success: true,
       token,
       user: {
-        _id: user._id,
-        fullName: user.fullName,
-        email: user.email,
-        role: user.role,
-        isPhoneVerified: user.isPhoneVerified,
+        _id: student._id,
+        fullName: student.fullName,
+        email: student.email,
+        role: student.role,
+        isPhoneVerified: student.isPhoneVerified,
       },
     });
   } catch (err) {
