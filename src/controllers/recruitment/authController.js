@@ -564,10 +564,8 @@ export const addStudentByPartner = async (req, res) => {
       email,
       phone,
       password, // Partner sets this
-      course,
-      uni,
-      requestedAmount,
-      country,
+      address
+      
     } = req.body;
 
     if (!name || !email || !phone || !password) {
@@ -596,10 +594,7 @@ export const addStudentByPartner = async (req, res) => {
       name,
       email: cleanEmail,
       phone,
-      course,
-      uni,
-      requestedAmount,
-      country,
+      address,
       userId: user._id,      // 🔗 Link to login account
       referredBy: partnerId, // 🔗 Link to partner
       status: "Pending",
