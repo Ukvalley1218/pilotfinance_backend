@@ -412,7 +412,62 @@ export const getAllPartners = async (req, res) => {
   }
 };
 
-export const login = sharedLogin;
+export const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // 1️⃣ Validate input
+    if (!email || !password) {
+      return res.status(400).json({ msg: "Email and password are required" });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    // 2️⃣ Find user
+    const user = await User.findOne({ email: cleanEmail });
+    if (!user) {
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
+
+    // 3️⃣ Check role (must be Partner)
+    if (user.role !== "Partner") {
+      return res.status(403).json({ msg: "Access denied. Not a partner account." });
+    }
+
+    // 4️⃣ Compare password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
+
+    // 5️⃣ Log activity
+    await logPartnerActivity(
+      user._id,
+      "Login",
+      "Partner logged in",
+      "System"
+    );
+
+    // 6️⃣ Generate token
+    const token = generateToken(user._id);
+
+    return res.status(200).json({
+      success: true,
+      token,
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        companyName: user.companyName,
+      },
+    });
+  } catch (err) {
+    console.error("Partner Login Error:", err);
+    return res.status(500).json({ msg: "Login failed" });
+  }
+};
+
 
 export const getStudentSignaturesForPartner = async (req, res) => {
   try {
