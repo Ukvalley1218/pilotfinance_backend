@@ -17,16 +17,7 @@ const userSchema = new mongoose.Schema(
     // --- UPDATED ROLE ENUM ---
     role: {
       type: String,
-      enum: [
-        "Super Admin",
-        "Admin",
-        "Editor",
-        "User",
-        "user",
-        "student",
-        "Partner",
-        "admin",
-      ],
+      enum: ["Admin", "Partner"],
       default: "User",
     },
 

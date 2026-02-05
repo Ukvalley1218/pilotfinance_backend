@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import bcrypt from "bcryptjs";
 
 const studentSchema = new mongoose.Schema(
   {
@@ -35,7 +36,9 @@ const studentSchema = new mongoose.Schema(
     address:{
       type: String
     },
-   
+   password: { type: String, required: true, minlength: 6 },
+isEmailVerified: { type: Boolean, default: false },
+
 
     // --- KYC & ADDRESS DATA (From User Panel Uploads) ---
     kycData: {
@@ -104,10 +107,23 @@ const studentSchema = new mongoose.Schema(
       default: "No",
     },
     verificationNotes: { type: String, default: "" },
+    verificationDate: { type: Date },
   },
   {
     timestamps: true,
   },
 );
+studentSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) return;
+
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+});
+
+// Method to verify password during login
+studentSchema.methods.comparePassword = async function (candidatePassword) {
+  return await bcrypt.compare(candidatePassword, this.password);
+};
+
 
 export const Student = mongoose.model("Student", studentSchema);

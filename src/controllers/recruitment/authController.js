@@ -169,16 +169,10 @@ export const updatePartnerProfile = async (req, res) => {
 // --- 4. GET UNLINKED STUDENTS ---
 export const getAvailableStudents = async (req, res) => {
   try {
-    const availableStudents = await Student.find({
-      $or: [{ referredBy: { $exists: false } }, { referredBy: null }],
-    })
-      .populate(
-        "userId",
-        "kycData avatar education gender address phone email fullName",
-      )
-      .select(
-        "name email phone course uni requestedAmount status kycStatus userId country",
-      );
+   const availableStudents = await Student.find({
+  referredBy: { $exists: false },
+}).select("name email phone course uni requestedAmount status kycStatus country");
+
 
     res.status(200).json({ success: true, data: availableStudents });
   } catch (err) {
@@ -198,7 +192,9 @@ export const linkStudentToPartner = async (req, res) => {
       { referredBy: partnerId },
       { new: true },
     );
-    if (!student) return res.status(404).json({ msg: "Student not found" });
+   if (student.referredBy)
+  return res.status(400).json({ msg: "Student already linked" });
+
 
     await User.findByIdAndUpdate(partnerId, {
       $addToSet: { referredStudents: student._id },
@@ -230,13 +226,16 @@ export const getPartnerLoans = async (req, res) => {
       query = { studentId: studentId };
     } else {
       const partnerId = req.user.id;
-      const students = await Student.find({ referredBy: partnerId });
-      const studentUserIds = students.map((s) => s.userId);
-      query = { userId: { $in: studentUserIds } };
+   
+  const partnerStudents = await Student.find({ referredBy: partnerId }).select("_id");
+const studentIds = partnerStudents.map(s => s._id);
+
+query = { studentId: { $in: studentIds } };
+
     }
 
     const myLoans = await Loan.find(query)
-      .populate("userId", "fullName email avatar")
+      .populate("studentId", "name email phone")
       .sort({ createdAt: -1 });
     res.status(200).json({ success: true, data: myLoans });
   } catch (err) {
@@ -248,28 +247,20 @@ export const getPartnerLoans = async (req, res) => {
 export const getReferredStudents = async (req, res) => {
   try {
     const partnerId = req.user.id;
-    const students = await Student.find({ referredBy: partnerId })
-      .populate("userId", "fullName avatar email phone kycData")
-      .select(
-        "name email phone course uni requestedAmount status kycStatus userId country",
-      );
+    const students = await Student.find({ referredBy: partnerId });
 
-    const studentUserIds = students.map((s) => s.userId?._id);
-    const loans = await Loan.find({ userId: { $in: studentUserIds } });
+const loans = await Loan.find({ studentId: { $in: students.map(s => s._id) } });
 
-    const mergedData = students.map((student) => {
-      const activeLoan = loans.find(
-        (l) => String(l.userId) === String(student.userId?._id),
-      );
-      return {
-        ...student._doc,
-        requestedAmount: activeLoan
-          ? activeLoan.principalRequested || activeLoan.totalAmount
-          : student.requestedAmount,
-        status: activeLoan ? activeLoan.status : student.status,
-        loan: activeLoan ? "Yes" : "No",
-      };
-    });
+const mergedData = students.map(student => {
+  const activeLoan = loans.find(l => String(l.studentId) === String(student._id));
+  return {
+    ...student._doc,
+    requestedAmount: activeLoan?.principalRequested || student.requestedAmount,
+    status: activeLoan?.status || student.status,
+    loan: activeLoan ? "Yes" : "No",
+  };
+});
+
 
     return res.status(200).json({ success: true, students: mergedData });
   } catch (err) {
@@ -282,11 +273,12 @@ export const getDashboardStats = async (req, res) => {
   try {
     const partnerId = req.user.id;
     const students = await Student.find({ referredBy: partnerId });
-    const studentUserIds = students.map((s) => s.userId);
+ 
+const studentIds = students.map(s => s._id);
+const referredLoans = await Loan.find({ studentId: { $in: studentIds } })
+  .sort({ createdAt: -1 })
+  .populate("studentId", "name");
 
-    const referredLoans = await Loan.find({ userId: { $in: studentUserIds } })
-      .sort({ createdAt: -1 })
-      .populate("userId", "fullName avatar");
 
     return res.status(200).json({
       success: true,
@@ -424,26 +416,26 @@ export const login = sharedLogin;
 
 export const getStudentSignaturesForPartner = async (req, res) => {
   try {
-    const partnerId = req.user.id;
     const { studentId } = req.params;
+    const partnerId = req.user.id;
+
     const student = await Student.findOne({
       _id: studentId,
       referredBy: partnerId,
     });
+
     if (!student) return res.status(403).json({ success: false });
-    const signatureRecord = await UserDocuments.findOne({
-      userId: student.userId,
-    });
-    if (!signatureRecord)
-      return res.status(200).json({ success: true, data: [] });
-    const signedDocs = signatureRecord.documents.filter((d) =>
-      ["Uploaded", "Signed"].includes(d.status),
+
+    const signedDocs = student.documents.filter(d =>
+      ["Uploaded", "Signed"].includes(d.status)
     );
+
     res.status(200).json({ success: true, data: signedDocs });
-  } catch (err) {
+  } catch {
     res.status(500).json({ success: false });
   }
 };
+
 
 // --- 16. PARTNER FUND/LEND LOAN (FUNDING ANCHOR FIXED) ---
 export const fundStudentLoan = async (req, res) => {
@@ -454,22 +446,15 @@ export const fundStudentLoan = async (req, res) => {
     if (!loanId)
       return res.status(400).json({ success: false, msg: "Loan ID required" });
 
-    const loan = await Loan.findOne({
-      $or: [
-        { _id: mongoose.Types.ObjectId.isValid(loanId) ? loanId : null },
-        { loanId: loanId },
-      ],
-    }).populate("userId");
+   const loan = await Loan.findOne({ _id: loanId }).populate("studentId");
 
-    if (!loan)
-      return res.status(404).json({ success: false, msg: "Loan not found" });
+const student = await Student.findOne({
+  _id: loan.studentId,
+  referredBy: partnerId,
+});
 
-    const student = await Student.findOne({
-      userId: loan.userId?._id,
-      referredBy: partnerId,
-    });
-    if (!student)
-      return res.status(403).json({ success: false, msg: "Access Denied" });
+if (!student) return res.status(403).json({ msg: "Access Denied" });
+
 
     if (["Disbursed", "Active", "Completed"].includes(loan.status)) {
       return res.status(400).json({ success: false, msg: "Already funded." });
@@ -494,14 +479,14 @@ export const fundStudentLoan = async (req, res) => {
     await loan.save();
 
     await Transaction.create({
-      id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
-      userId: loan.userId._id,
-      studentId: student._id, // IMPORTANT: Link history to this request
-      type: "Credit",
-      desc: `${loan.category} Loan Disbursed`,
-      amount: P,
-      status: "Completed",
-    });
+  id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
+  studentId: student._id,
+  type: "Credit",
+  desc: `${loan.category} Loan Disbursed`,
+  amount: P,
+  status: "Completed",
+});
+
 
     await logPartnerActivity(
       partnerId,
@@ -536,11 +521,7 @@ export const verifyStudent = async (req, res) => {
 
     if (!updatedStudent) return res.status(404).json({ success: false });
 
-    if (updatedStudent.userId) {
-      await User.findByIdAndUpdate(updatedStudent.userId, {
-        $set: { kycStatus: kycStatus || "Approved" },
-      });
-    }
+    
 
     await logPartnerActivity(
       req.user.id,
@@ -580,26 +561,20 @@ export const addStudentByPartner = async (req, res) => {
       return res.status(400).json({ success: false, msg: "Email already registered" });
     }
 
-    // 2️⃣ Create LOGIN ACCOUNT (User table)
-    const user = await User.create({
-      fullName: name,
-      email: cleanEmail,
-      phone,
-      password, // 🔥 Auto-hashed by pre("save") hook
-      role: "student",
-    });
 
-    // 3️⃣ Create STUDENT PROFILE
-    const student = await Student.create({
-      name,
-      email: cleanEmail,
-      phone,
-      address,
-      userId: user._id,      // 🔗 Link to login account
-      referredBy: partnerId, // 🔗 Link to partner
-      status: "Pending",
-      kycStatus: "Pending",
-    });
+   const hashedPassword = await bcrypt.hash(password, 10);
+
+const student = await Student.create({
+  name,
+  email: cleanEmail,
+  phone,
+  password: hashedPassword,
+  address,
+  referredBy: partnerId,
+  status: "Pending",
+  kycStatus: "Pending",
+});
+
 
     // 4️⃣ Add to Partner’s list
     await User.findByIdAndUpdate(partnerId, {
