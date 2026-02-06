@@ -91,15 +91,75 @@ export const updateAvatar = async (req, res) => {
 // --- 5. LOGIN (Updated for Smart Redirect) ---
 export const login = async (req, res) => {
   try {
+    console.log("🔐 Login attempt received");
+    console.log("📩 Request body:", req.body);
+
     const { email, password } = req.body;
 
-    const student = await Student.findOne({ email: email.toLowerCase().trim() });
-    if (!student) return res.status(400).json({ msg: "Invalid credentials" });
+    if (!email || !password) {
+      console.log("❌ Missing email or password");
+      return res.status(400).json({ msg: "Email and password are required" });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    console.log("📧 Searching for student with email:", cleanEmail);
+
+    // 1️⃣ Find student
+    const student = await Student.findOne({ email: cleanEmail });
+
+    if (!student) {
+      console.log("❌ No student found with that email");
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
+
+    console.log("✅ Student found:", {
+      id: student._id,
+      email: student.email,
+      hasPassword: !!student.password,
+    });
+
+    // 2️⃣ Compare password
+   console.log("🔑 Comparing password...");
+
+// If password in DB is already bcrypt hash
+if (student.password.startsWith("$2")) {
+  const isMatch = await bcrypt.compare(password, student.password);
+  if (!isMatch) {
+    console.log("❌ Password does not match (bcrypt)");
+    return res.status(400).json({ msg: "Invalid credentials" });
+  }
+} else {
+  // Old plain-text password case
+  console.log("⚠️ Plain text password detected. Auto-upgrading...");
+
+  if (password !== student.password) {
+    console.log("❌ Password does not match (plain)");
+    return res.status(400).json({ msg: "Invalid credentials" });
+  }
+
+  // Upgrade to hashed password
+  const salt = await bcrypt.genSalt(10);
+  student.password = await bcrypt.hash(password, salt);
+  await student.save();
+  console.log("🔄 Password upgraded to bcrypt hash");
+}
+
+console.log("✅ Password matched");
 
     const isMatch = await bcrypt.compare(password, student.password);
-    if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
 
+    if (!isMatch) {
+      console.log("❌ Password does not match");
+      return res.status(400).json({ msg: "Invalid credentials" });
+    }
+
+    console.log("✅ Password matched");
+
+    // 3️⃣ Generate token
+    console.log("🪪 Generating token...");
     const token = generateToken(student._id);
+
+    console.log("🎉 Login successful for:", student.email);
 
     res.status(200).json({
       success: true,
@@ -112,11 +172,11 @@ export const login = async (req, res) => {
         avatar: student.avatar,
       },
     });
-  } catch {
-    res.status(500).json({ msg: "Login error" });
+  } catch (error) {
+    console.error("🔥 LOGIN ERROR:", error);
+    res.status(500).json({ msg: "Login error", error: error.message });
   }
 };
-
 
 
 // --- 7. FORGOT PASSWORD ---

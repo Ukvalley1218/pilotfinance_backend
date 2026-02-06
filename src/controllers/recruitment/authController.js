@@ -591,18 +591,10 @@ export const verifyStudent = async (req, res) => {
 };
 
 
-// --- ADD STUDENT BY PARTNER ---
 export const addStudentByPartner = async (req, res) => {
   try {
     const partnerId = req.user.id;
-    const {
-      name,
-      email,
-      phone,
-      password, // Partner sets this
-      address
-      
-    } = req.body;
+    const { name, email, phone, password, address } = req.body;
 
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ success: false, msg: "Missing required fields" });
@@ -610,28 +602,23 @@ export const addStudentByPartner = async (req, res) => {
 
     const cleanEmail = email.toLowerCase().trim();
 
-    // 1️⃣ Check if user already exists
     const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
       return res.status(400).json({ success: false, msg: "Email already registered" });
     }
 
+    // ✅ DO NOT HASH HERE — schema will hash automatically
+    const student = await Student.create({
+      name,
+      email: cleanEmail,
+      phone,
+      password, // plain password goes in
+      address,
+      referredBy: partnerId,
+      status: "Pending",
+      kycStatus: "Pending",
+    });
 
-   const hashedPassword = await bcrypt.hash(password, 10);
-
-const student = await Student.create({
-  name,
-  email: cleanEmail,
-  phone,
-  password: hashedPassword,
-  address,
-  referredBy: partnerId,
-  status: "Pending",
-  kycStatus: "Pending",
-});
-
-
-    // 4️⃣ Add to Partner’s list
     await User.findByIdAndUpdate(partnerId, {
       $addToSet: { referredStudents: student._id },
     });
