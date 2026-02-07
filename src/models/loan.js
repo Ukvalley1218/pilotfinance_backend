@@ -2,12 +2,6 @@ import mongoose from "mongoose";
 
 const loanSchema = new mongoose.Schema(
   {
-    // --- RELATIONSHIPS ---
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "User ID is required"],
-    },
     // NEW: Link to the specific Student Application record
     studentId: {
       type: mongoose.Schema.Types.ObjectId,
