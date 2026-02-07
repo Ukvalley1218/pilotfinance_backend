@@ -68,7 +68,18 @@ export const updatePersonalInfo = async (req, res) => {
 // --- 3. HANDLE DOCUMENTS & BANK DETAILS (Step 2) ---
 export const submitKycDocuments = async (req, res) => {
   try {
-    const { bankAccount, bankName, ifscCode, idType, documentType } = req.body;
+    const {
+      bankAccount,
+      bankName,
+      ifscCode,
+      idType,
+      documentType,
+      addressState,
+      addressCity,
+      postalCode,
+      addressDocType,
+    } = req.body;
+
     const files = req.files;
 
     const student = await Student.findById(req.user.id);
@@ -87,21 +98,22 @@ export const submitKycDocuments = async (req, res) => {
       }
     };
 
-    ["front", "back", "idFront", "idBack", "selfie", "passbook", "loa"].forEach(updateDoc);
+    ["front", "back", "idFront", "idBack", "selfie", "passbook", "loa", "addressProof"].forEach(updateDoc);
 
     // 🔹 Save general KYC profile data
     student.kycProfile = {
-      bankAccount,
-      bankName,
-      ifscCode,
-      addressState,
-      addressCity,
-      postalCode,
-      addressDocType,
-      idType,
-      documentType,
-      submittedAt: new Date(),
-    };
+  bankAccount: bankAccount || "",
+  bankName: bankName || "",
+  ifscCode: ifscCode || "",
+  addressState: addressState || "",
+  addressCity: addressCity || "",
+  postalCode: postalCode || "",
+  addressDocType: addressDocType || "",
+  idType: idType || "",
+  documentType: documentType || "",
+  submittedAt: new Date(),
+};
+
 
     student.kycStatus = "Pending";
 
@@ -113,10 +125,11 @@ export const submitKycDocuments = async (req, res) => {
       documents: student.kycData,
     });
   } catch (err) {
-    console.error(err);
+    console.error("KYC Upload Error:", err);
     res.status(500).json({ msg: "Server Error during document upload" });
   }
 };
+
 
 
 
