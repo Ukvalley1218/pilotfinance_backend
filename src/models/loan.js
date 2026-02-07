@@ -94,6 +94,9 @@ const loanSchema = new mongoose.Schema(
       type: String,
       default: "0000",
     },
+    loanStatus:{
+      type:String,
+    },
 
     // --- STATUS ---
     status: {
