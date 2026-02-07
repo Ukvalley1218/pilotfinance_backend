@@ -100,18 +100,20 @@ export const submitKycDocuments = async (req, res) => {
     ["front", "back", "idFront", "idBack", "selfie", "passbook", "loa", "addressProof"].forEach(updateDoc);
 
     // 🔹 Save general KYC profile data
-    student.kycProfile = {
-  bankAccount: bankAccount || "",
-  bankName: bankName || "",
-  ifscCode: ifscCode || "",
-  addressState: addressState || "",
-  addressCity: addressCity || "",
-  postalCode: postalCode || "",
-  addressDocType: addressDocType || "",
-  idType: idType || "",
-  documentType: documentType || "",
+   student.kycProfile = {
+  ...student.kycProfile, // 🟢 KEEP OLD DATA
+  bankAccount: bankAccount ?? student.kycProfile?.bankAccount,
+  bankName: bankName ?? student.kycProfile?.bankName,
+  ifscCode: ifscCode ?? student.kycProfile?.ifscCode,
+  addressState: addressState ?? student.kycProfile?.addressState,
+  addressCity: addressCity ?? student.kycProfile?.addressCity,
+  postalCode: postalCode ?? student.kycProfile?.postalCode,
+  addressDocType: addressDocType ?? student.kycProfile?.addressDocType,
+  idType: idType ?? student.kycProfile?.idType,
+  documentType: documentType ?? student.kycProfile?.documentType,
   submittedAt: new Date(),
 };
+
 
 
     student.kycStatus = "Pending";
@@ -152,13 +154,14 @@ export const submitAddressProof = async (req, res) => {
 
     // Save address metadata inside profile
     student.kycProfile = {
-      ...student.kycProfile,
-      addressCountry: country,
-      addressState: state,
-      addressCity: city,
-      postalCode,
-      addressDocType: docType,
-    };
+  ...(student.kycProfile || {}),
+  addressCountry: country ?? student.kycProfile?.addressCountry,
+  addressState: state ?? student.kycProfile?.addressState,
+  addressCity: city ?? student.kycProfile?.addressCity,
+  postalCode: postalCode ?? student.kycProfile?.postalCode,
+  addressDocType: docType ?? student.kycProfile?.addressDocType,
+};
+
 
     student.kycStatus = "Pending";
     student.country = country; // Update country if provided
