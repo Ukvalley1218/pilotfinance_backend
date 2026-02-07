@@ -4,9 +4,7 @@ import { Student } from "../../models/student.model.js";
 // --- 1. GET KYC STATUS & DATA ---
 export const getKycStatus = async (req, res) => {
   try {
-    const student = await Student.findById(req.user.id).select(
-      "kycData kycStatus dob country state phone"
-    );
+    const student = await Student.findById(req.user.id);
 
     if (!student)
       return res.status(404).json({ success: false, msg: "Student not found" });
@@ -15,7 +13,8 @@ export const getKycStatus = async (req, res) => {
       success: true,
       status: student.kycStatus,
       data: {
-        ...(student.kycProfile || {}),
+        ...(student.kycData || {}),
+        kycProfile: student.kycProfile,
         dob: student.dob,
         country: student.country,
         state: student.state,
