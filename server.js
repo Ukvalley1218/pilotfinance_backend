@@ -17,7 +17,7 @@ import partnerRoutes from "./src/routes/admin/partnerRoutes.js";
 import adminLoanRoutes from "./src/routes/admin/loanRoutes.js";
 import fundRoutes from "./src/routes/admin/fundRoutes.js";
 import reportRoutes from "./src/routes/admin/reportRoutes.js";
-import adminDocRoutes from "./src/routes/admin/documentRoutes.js";
+
 import financeRoutes from "./src/routes/admin/financeRoutes.js";
 import adminNotificationRoutes from "./src/routes/admin/notificationRoutes.js";
 import dashboardstats from "./src/routes/admin/dashboard.stats.js";
@@ -158,7 +158,6 @@ app.use("/api/admin/partner", partnerRoutes);
 app.use("/api/admin/loan", adminLoanRoutes);
 app.use("/api/admin/funds", fundRoutes);
 app.use("/api/admin/reports", reportRoutes);
-app.use("/api/admin/document", adminDocRoutes);
 app.use("/api/admin/finance", financeRoutes);
 app.use("/api/admin/notification", adminNotificationRoutes);
 app.use("/api/admin/dashboard/stats", dashboardstats);

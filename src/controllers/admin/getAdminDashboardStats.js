@@ -1,39 +1,50 @@
-import { Partner } from "../../models/partner.model.js";
+import User from "../../models/User.js";
 import { Student } from "../../models/student.model.js";
 import Loan from "../../models/loan.js";
 
-/**
- * @desc Admin Dashboard Statistics
- * @route GET /api/admin/dashboard/stats
- */
 export const getAdminDashboardStats = async (req, res) => {
   try {
     const [
       activePartners,
       pendingPartners,
-      inactivePartners,
       totalStudents,
-      totalLoans,
+      studentsPendingKyc,
+      activeLoans,
+      pendingLoans,
+      disbursedAmount,
     ] = await Promise.all([
-      Partner.countDocuments({ status: "Active" }),
-      Partner.countDocuments({ status: "Pending" }),
-      Partner.countDocuments({ status: "Inactive" }),
+      User.countDocuments({ role: "Partner", status: "Active" }),
+      User.countDocuments({ role: "Partner", kycStatus: "Pending" }),
       Student.countDocuments(),
-      Loan.countDocuments(),
+      Student.countDocuments({ kycStatus: "Pending" }),
+      Loan.countDocuments({ status: { $in: ["Active", "Disbursed"] } }),
+      Loan.countDocuments({ status: { $in: ["Requested", "Pending"] } }),
+      Loan.aggregate([
+        { $match: { status: { $in: ["Disbursed", "Active", "Completed"] } } },
+        { $group: { _id: null, total: { $sum: "$principalRequested" } } },
+      ]),
     ]);
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       data: {
-        active: activePartners,
-        pending: pendingPartners,
-        inactive: inactivePartners,
-        totalStudents,
-        totalLoans,
+        partners: {
+          active: activePartners,
+          pendingKyc: pendingPartners,
+        },
+        students: {
+          total: totalStudents,
+          pendingKyc: studentsPendingKyc,
+        },
+        loans: {
+          active: activeLoans,
+          pendingApproval: pendingLoans,
+          totalDisbursed: disbursedAmount[0]?.total || 0,
+        },
       },
     });
   } catch (error) {
-    console.error("Dashboard Stats Error:", error);
+    console.error("Admin Dashboard Stats Error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to load dashboard statistics",
