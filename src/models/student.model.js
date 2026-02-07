@@ -39,6 +39,9 @@ const studentSchema = new mongoose.Schema(
     },
     password: { type: String, required: true, minlength: 6 },
     isEmailVerified: { type: Boolean, default: false },
+    // ✅ ADD THESE
+otpCode: { type: String },
+otpExpires: { type: Date },
 
     kycProfile: {
       bankAccount: { type: String, default: "" },

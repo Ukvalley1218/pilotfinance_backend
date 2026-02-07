@@ -284,32 +284,40 @@ console.log("Otp",otp)
 // --- 10. VERIFY OTP ---
 export const verifyOTP = async (req, res) => {
   try {
-    const { userId, otp } = req.body;
-   const student = await Student.findById(userId);
+    const { email, otp } = req.body;
+    const cleanEmail = email.toLowerCase().trim();
 
-    if (!student || student.otpCode !== otp || student.otpExpires < Date.now()) {
-  return res.status(400).json({ msg: "Invalid or expired code" });
-}
+    const student = await Student.findOne({ email: cleanEmail });
 
+    if (
+      !student ||
+      student.otpCode !== String(otp) ||
+      !student.otpExpires ||
+      student.otpExpires.getTime() < Date.now()
+    ) {
+      return res.status(400).json({ msg: "Invalid or expired code" });
+    }
 
-  student.isEmailVerified = true;
-student.otpCode = undefined;
-student.otpExpires = undefined;
-await student.save();
+    student.isEmailVerified = true;
+    student.otpCode = undefined;
+    student.otpExpires = undefined;
+    await student.save();
 
     const token = generateToken(student._id);
+
     return res.status(200).json({
       success: true,
       token,
       user: {
         _id: student._id,
-        fullName: student.fullName,
+        name: student.name,
         email: student.email,
-        role: student.role,
-        isPhoneVerified: student.isPhoneVerified,
       },
     });
   } catch (err) {
+    console.error(err);
     return res.status(500).json({ msg: "Verification failed" });
   }
 };
+
+

@@ -1,5 +1,8 @@
 import PDFDocument from "pdfkit";
 import User from "../../models/User.js";
+
+import { Student } from "../../models/student.model.js";
+
 import bcrypt from "bcryptjs";
 import { Notification } from "../../models/notification.model.js";
 
@@ -9,40 +12,29 @@ import { Notification } from "../../models/notification.model.js";
  */
 export const createPartner = async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
+    const { fullName, email, phone, password, companyName, businessType } = req.body;
 
-    if (!name || !email || !phone || !password) {
-      return res.status(400).json({ message: "Name, email, phone, password required" });
+    if (!fullName || !email || !password) {
+      return res.status(400).json({ message: "Full name, email and password required" });
     }
 
     const cleanEmail = email.toLowerCase().trim();
 
-    const existing = await Partner.findOne({ email: cleanEmail });
-    if (existing) return res.status(409).json({ message: "Partner already exists" });
+    const exists = await User.findOne({ email: cleanEmail });
+    if (exists) return res.status(409).json({ message: "Email already exists" });
 
-    // 1️⃣ Create Login Account
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await User.create({
-      fullName: name,
+    const partner = await User.create({
+      fullName,
       email: cleanEmail,
       phone,
       password: hashedPassword,
       role: "Partner",
+      companyName,
+      businessType,
       isEmailVerified: true,
-    });
-
-    // 2️⃣ Create Partner Business Profile
-    const partner = await Partner.create({
-      ...req.body,
-      email: cleanEmail,
-      userId: user._id, // link login account
-    });
-
-    await Notification.create({
-      type: "success",
-      message: `New Partner Registered: ${partner.name}`,
-      link: `/admin/partners/${partner._id}`,
+      isPhoneVerified: true,
     });
 
     res.status(201).json({ success: true, data: partner });
@@ -52,33 +44,28 @@ export const createPartner = async (req, res) => {
   }
 };
 
+
+
 /**
  * @desc Update Partner
  * @route PUT /api/partner/partners/:id
  */
 export const updatePartner = async (req, res) => {
   try {
-    const { id } = req.params;
-    const partner = await Partner.findById(id);
+    const partner = await User.findOneAndUpdate(
+      { _id: req.params.id, role: "Partner" },
+      req.body,
+      { new: true, runValidators: true }
+    ).select("-password");
 
     if (!partner) return res.status(404).json({ message: "Partner not found" });
 
-    const updated = await Partner.findByIdAndUpdate(id, req.body, { new: true });
-
-    // 🔄 Sync login account
-    if (partner.userId) {
-      await User.findByIdAndUpdate(partner.userId, {
-        fullName: updated.name,
-        email: updated.email,
-        phone: updated.phone,
-      });
-    }
-
-    res.json({ success: true, data: updated });
-  } catch (err) {
+    res.json({ success: true, data: partner });
+  } catch {
     res.status(500).json({ message: "Update failed" });
   }
 };
+
 
 
 /**
@@ -87,102 +74,66 @@ export const updatePartner = async (req, res) => {
  */
 export const getAllPartners = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 100,
-      search,
-      status,
-      businessType,
-      sortBy = "createdAt",
-      order = "desc",
-    } = req.query;
+    const { search } = req.query;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const filter = {};
-
-    // Logic to handle frontend "All" filters
-    if (status && !["All Status", "All"].includes(status)) {
-      filter.status = status;
-    }
-
-    if (businessType && !["All Types", "All"].includes(businessType)) {
-      filter.businessType = businessType;
-    }
+    const filter = { role: "Partner" };
 
     if (search) {
       filter.$or = [
-        { name: { $regex: search, $options: "i" } },
+        { fullName: { $regex: search, $options: "i" } },
         { email: { $regex: search, $options: "i" } },
-        { businessName: { $regex: search, $options: "i" } },
+        { companyName: { $regex: search, $options: "i" } },
       ];
     }
 
-    const sortOptions = { [sortBy]: order === "asc" ? 1 : -1 };
+    const partners = await User.find(filter).select("-password").sort({ createdAt: -1 });
 
-    const partners = await Partner.find(filter)
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const totalRecords = await Partner.countDocuments(filter);
-
-    return res.status(200).json({
-      success: true,
-      pagination: {
-        totalRecords,
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(totalRecords / parseInt(limit)),
-      },
-      data: partners,
-    });
-  } catch (error) {
-    console.error("Get Partners Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to load partners from the server.",
-    });
+    res.json({ success: true, data: partners });
+  } catch {
+    res.status(500).json({ message: "Failed to fetch partners" });
   }
 };
+
+
 
 /**
  * @desc Get Partner by ID
  */
 export const getPartnerById = async (req, res) => {
   try {
-    const partner = await Partner.findById(req.params.id);
-    if (!partner) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Partner not found" });
-    }
-    return res.status(200).json({ success: true, data: partner });
-  } catch (error) {
-    return res
-      .status(400)
-      .json({ success: false, message: "Invalid Partner ID" });
+    const partner = await User.findOne({ _id: req.params.id, role: "Partner" }).select("-password");
+    if (!partner) return res.status(404).json({ message: "Partner not found" });
+
+    const students = await Student.find({ referredBy: partner._id })
+      .select("name email kycStatus loanStatus");
+
+    res.json({ success: true, data: { ...partner.toObject(), students } });
+  } catch {
+    res.status(400).json({ message: "Invalid ID" });
   }
 };
+
 
 /**
  * @desc Delete Partner
  */
 export const deletePartner = async (req, res) => {
   try {
-    const partner = await Partner.findByIdAndDelete(req.params.id);
-    if (!partner) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Partner not found" });
-    }
-    return res
-      .status(200)
-      .json({ success: true, message: "Partner record deleted" });
-  } catch (error) {
-    return res
-      .status(500)
-      .json({ success: false, message: "Error deleting record" });
+    const partner = await User.findOneAndDelete({ _id: req.params.id, role: "Partner" });
+    if (!partner) return res.status(404).json({ message: "Partner not found" });
+
+    // Unlink students but DO NOT delete them
+    await Student.updateMany(
+      { referredBy: partner._id },
+      { $unset: { referredBy: "" } }
+    );
+
+    res.json({ success: true, message: "Partner deleted" });
+  } catch {
+    res.status(500).json({ message: "Delete failed" });
   }
 };
+
 
 
 /**
@@ -193,8 +144,8 @@ export const downloadPartnerReportPDF = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const partner = await Partner.findById(id).lean();
-    if (!partner) {
+    const user = await User.findById(id).lean();
+    if (!user) {
       return res.status(404).json({
         success: false,
         message: "Partner not found for report generation.",
