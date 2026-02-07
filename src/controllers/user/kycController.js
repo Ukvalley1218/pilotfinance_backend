@@ -5,7 +5,7 @@ import { Student } from "../../models/student.model.js";
 export const getKycStatus = async (req, res) => {
   try {
     const student = await Student.findById(req.user.id).select(
-      "kycData kycStatus dob country state phone kycProfile"
+      "kycData kycStatus dob country state phone"
     );
 
     if (!student)
