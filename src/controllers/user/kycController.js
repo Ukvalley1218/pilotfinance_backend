@@ -15,7 +15,7 @@ export const getKycStatus = async (req, res) => {
       success: true,
       status: student.kycStatus,
       data: {
-        ...(student.kycData || {}),
+        ...(student.kycProfile || {}),
         dob: student.dob,
         country: student.country,
         state: student.state,
@@ -136,7 +136,7 @@ export const submitKycDocuments = async (req, res) => {
 // --- 4. HANDLE ADDRESS PROOF (Step 3) ---
 export const submitAddressProof = async (req, res) => {
   try {
-    const { state, city, postalCode, docType } = req.body;
+    const { country,state, city, postalCode, docType } = req.body;
 
     const student = await Student.findById(req.user.id);
     if (!student) return res.status(404).json({ msg: "Student not found" });
@@ -161,6 +161,7 @@ export const submitAddressProof = async (req, res) => {
     };
 
     student.kycStatus = "Pending";
+    student.country = country || student.country; // Update country if provided
 
     await student.save();
 
