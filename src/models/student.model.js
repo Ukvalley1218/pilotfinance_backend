@@ -1,7 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 
-
 const studentSchema = new mongoose.Schema(
   {
     // --- THE BRIDGE FIELD ---
@@ -28,7 +27,7 @@ const studentSchema = new mongoose.Schema(
       type: String,
       required: true,
       lowercase: true,
-        unique: true,   // ✅ ADD THIS
+      unique: true, // ✅ ADD THIS
       trim: true,
     },
     phone: {
@@ -48,15 +47,15 @@ const studentSchema = new mongoose.Schema(
       type: Date,
     },
     gender: {
-  type: String,
-  enum: ["Male", "Female", "Other"],
-},
-    
+      type: String,
+      enum: ["Male", "Female", "Other"],
+    },
+
     password: { type: String, required: true, minlength: 6 },
     isEmailVerified: { type: Boolean, default: false },
     // ✅ ADD THESE
-otpCode: { type: String },
-otpExpires: { type: Date },
+    otpCode: { type: String },
+    otpExpires: { type: Date },
 
     kycProfile: {
       bankAccount: { type: String, default: "" },
@@ -67,6 +66,7 @@ otpExpires: { type: Date },
       submittedAt: Date,
       addressState: { type: String, default: "" },
       addressCity: { type: String, default: "" },
+      addressCountry: { type: String, default: "" },
       postalCode: { type: String, default: "" },
       addressDocType: { type: String, default: "Bank Statement" },
     },
@@ -137,19 +137,18 @@ otpExpires: { type: Date },
 
     // --- DIGITAL SIGNATURES ---
     documents: [
-  {
-    name: String,
-    status: {
-      type: String,
-      enum: ["Sign Now", "Uploaded", "Signed"],
-      default: "Sign Now",
-    },
-    fileUrl: String,
-    fileType: String,
-    uploadedAt: Date,
-  },
-],
-
+      {
+        name: String,
+        status: {
+          type: String,
+          enum: ["Sign Now", "Uploaded", "Signed"],
+          default: "Sign Now",
+        },
+        fileUrl: String,
+        fileType: String,
+        uploadedAt: Date,
+      },
+    ],
 
     // --- APPLICATION DATA ---
     agency: { type: String, default: "" },
@@ -159,7 +158,7 @@ otpExpires: { type: Date },
     intake: { type: String, default: "" },
     duration: { type: String, default: "" },
     appId: { type: String, default: "" },
-    avatar:{type:String,default:""},
+    avatar: { type: String, default: "" },
 
     // --- LOAN SPECIFIC DATA ---
     loanId: { type: String, default: "" },

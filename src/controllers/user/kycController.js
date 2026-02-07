@@ -5,7 +5,7 @@ import { Student } from "../../models/student.model.js";
 export const getKycStatus = async (req, res) => {
   try {
     const student = await Student.findById(req.user.id).select(
-      "kycData kycStatus dob country state phone"
+      "kycData kycStatus dob country state phone kycProfile"
     );
 
     if (!student)
@@ -154,6 +154,7 @@ export const submitAddressProof = async (req, res) => {
     // Save address metadata inside profile
     student.kycProfile = {
       ...student.kycProfile,
+      addressCountry: country,
       addressState: state,
       addressCity: city,
       postalCode,
@@ -161,7 +162,7 @@ export const submitAddressProof = async (req, res) => {
     };
 
     student.kycStatus = "Pending";
-    student.country = country || student.country; // Update country if provided
+    student.country = country; // Update country if provided
 
     await student.save();
 
