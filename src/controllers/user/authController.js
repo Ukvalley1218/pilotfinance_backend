@@ -285,7 +285,12 @@ console.log("Otp",otp)
 export const verifyOTP = async (req, res) => {
   try {
     const { email, otp } = req.body;
-    const cleanEmail = email.toLowerCase().trim();
+
+    if (!email || !otp) {
+      return res.status(400).json({ msg: "Email and OTP are required" });
+    }
+
+    const cleanEmail = email.trim();
 
     const student = await Student.findOne({ email: cleanEmail });
 
@@ -315,7 +320,7 @@ export const verifyOTP = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error(err);
+    console.error("VERIFY OTP ERROR:", err);
     return res.status(500).json({ msg: "Verification failed" });
   }
 };
