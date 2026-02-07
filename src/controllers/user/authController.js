@@ -8,15 +8,15 @@ import fetch from "node-fetch";
 import cloudinary from "../../services/cloudinary.service.js";
 import streamifier from "streamifier";
 
-
 // --- 1. GET CURRENT USER ---
 export const getMe = async (req, res) => {
   try {
-    const student = await Student.findById(req.user.id).select("-password -otpCode -otpExpires");
-if (!student) return res.status(404).json({ msg: "Student not found" });
+    const student = await Student.findById(req.user.id).select(
+      "-password -otpCode -otpExpires",
+    );
+    if (!student) return res.status(404).json({ msg: "Student not found" });
 
-res.status(200).json({ success: true, data: student });
-
+    res.status(200).json({ success: true, data: student });
   } catch (err) {
     return res.status(500).json({ success: false, msg: "Server Error" });
   }
@@ -28,14 +28,14 @@ export const updateProfile = async (req, res) => {
     const fields = ["name", "phone", "address", "dob", "education", "gender"];
 
     let updateObj = {};
-    fields.forEach(field => {
+    fields.forEach((field) => {
       if (req.body[field] !== undefined) updateObj[field] = req.body[field];
     });
 
     const updatedStudent = await Student.findByIdAndUpdate(
       req.user.id,
       { $set: updateObj },
-      { new: true }
+      { new: true },
     ).select("-password");
 
     res.status(200).json({ success: true, data: updatedStudent });
@@ -43,7 +43,6 @@ export const updateProfile = async (req, res) => {
     res.status(500).json({ msg: "Update failed" });
   }
 };
-
 
 // --- 3. UPDATE PROFILE PICTURE ---
 export const updateAvatar = async (req, res) => {
@@ -64,7 +63,7 @@ export const updateAvatar = async (req, res) => {
           (error, result) => {
             if (result) resolve(result);
             else reject(error);
-          }
+          },
         );
         streamifier.createReadStream(buffer).pipe(stream);
       });
@@ -73,7 +72,6 @@ export const updateAvatar = async (req, res) => {
 
     // Save Cloudinary URL to user
     await Student.findByIdAndUpdate(req.user.id, { avatar: result.secure_url });
-
 
     return res.status(200).json({
       success: true,
@@ -84,9 +82,6 @@ export const updateAvatar = async (req, res) => {
     return res.status(500).json({ success: false, msg: "Image upload failed" });
   }
 };
-
-
-
 
 // --- 5. LOGIN (Updated for Smart Redirect) ---
 export const login = async (req, res) => {
@@ -119,32 +114,32 @@ export const login = async (req, res) => {
     });
 
     // 2️⃣ Compare password
-   console.log("🔑 Comparing password...");
+    console.log("🔑 Comparing password...");
 
-// If password in DB is already bcrypt hash
-if (student.password.startsWith("$2")) {
-  const isMatch = await bcrypt.compare(password, student.password);
-  if (!isMatch) {
-    console.log("❌ Password does not match (bcrypt)");
-    return res.status(400).json({ msg: "Invalid credentials" });
-  }
-} else {
-  // Old plain-text password case
-  console.log("⚠️ Plain text password detected. Auto-upgrading...");
+    // If password in DB is already bcrypt hash
+    if (student.password.startsWith("$2")) {
+      const isMatch = await bcrypt.compare(password, student.password);
+      if (!isMatch) {
+        console.log("❌ Password does not match (bcrypt)");
+        return res.status(400).json({ msg: "Invalid credentials" });
+      }
+    } else {
+      // Old plain-text password case
+      console.log("⚠️ Plain text password detected. Auto-upgrading...");
 
-  if (password !== student.password) {
-    console.log("❌ Password does not match (plain)");
-    return res.status(400).json({ msg: "Invalid credentials" });
-  }
+      if (password !== student.password) {
+        console.log("❌ Password does not match (plain)");
+        return res.status(400).json({ msg: "Invalid credentials" });
+      }
 
-  // Upgrade to hashed password
-  const salt = await bcrypt.genSalt(10);
-  student.password = await bcrypt.hash(password, salt);
-  await student.save();
-  console.log("🔄 Password upgraded to bcrypt hash");
-}
+      // Upgrade to hashed password
+      const salt = await bcrypt.genSalt(10);
+      student.password = await bcrypt.hash(password, salt);
+      await student.save();
+      console.log("🔄 Password upgraded to bcrypt hash");
+    }
 
-console.log("✅ Password matched");
+    console.log("✅ Password matched");
 
     const isMatch = await bcrypt.compare(password, student.password);
 
@@ -178,17 +173,16 @@ console.log("✅ Password matched");
   }
 };
 
-
 // --- 7. FORGOT PASSWORD ---
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-   const student = await Student.findOne({ email: email });
+    const student = await Student.findOne({ email: email });
     if (!student) return res.status(404).json({ msg: "User not found" });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
- student.otpCode = otp;
-student.otpExpires = new Date(Date.now() + 10 * 60000);
+    student.otpCode = otp;
+    student.otpExpires = new Date(Date.now() + 10 * 60000);
     await student.save();
 
     await transporter.sendMail({
@@ -208,17 +202,18 @@ export const resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
     const student = await Student.findOne({
-  email: cleanEmail,
-  otpCode: otp,
-  otpExpires: { $gt: Date.now() }
-});
+      email: cleanEmail,
+      otpCode: otp,
+      otpExpires: { $gt: Date.now() },
+    });
 
-    if (!student) return res.status(400).json({ msg: "Invalid or expired OTP" });
+    if (!student)
+      return res.status(400).json({ msg: "Invalid or expired OTP" });
 
     student.password = await bcrypt.hash(newPassword, 10);
-student.otpCode = undefined;
-student.otpExpires = undefined;
-await student.save();
+    student.otpCode = undefined;
+    student.otpExpires = undefined;
+    await student.save();
 
     return res
       .status(200)
@@ -242,12 +237,12 @@ export const sendOTP = async (req, res) => {
 
     // 1️⃣ Store OTP in DB FIRST
     const student = await Student.findOneAndUpdate(
-  { email: cleanEmail },
-  { otpCode: otp, otpExpires: new Date(Date.now() + 10 * 60 * 1000) },
-  { new: true }
-);
+      { email: cleanEmail },
+      { otpCode: otp, otpExpires: new Date(Date.now() + 10 * 60 * 1000) },
+      { new: true },
+    );
 
-console.log("Otp",otp)
+    console.log("Otp", otp);
     if (!student) {
       return res.status(404).json({ msg: "User not found" });
     }
@@ -270,7 +265,6 @@ console.log("Otp",otp)
       msg: "OTP generated successfully",
       userId: student._id,
     });
-
   } catch (err) {
     console.error("SEND OTP ERROR:", err);
     return res.status(500).json({
@@ -279,7 +273,6 @@ console.log("Otp",otp)
     });
   }
 };
-
 
 // --- 10. VERIFY OTP ---
 export const verifyOTP = async (req, res) => {
@@ -325,4 +318,21 @@ export const verifyOTP = async (req, res) => {
   }
 };
 
-
+/**
+ * @desc    Get Current Logged-in Profile
+ */
+export const getProfile = async (req, res) => {
+  try {
+    const user = await Student.findById(req.user.id);
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+    return res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: "Failed to fetch profile" });
+  }
+};

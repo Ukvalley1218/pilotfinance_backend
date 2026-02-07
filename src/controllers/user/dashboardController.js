@@ -10,7 +10,8 @@ import Transaction from "../../models/transaction.model.js";
 export const getDashboardData = async (req, res) => {
   try {
     const studentId = req.user.id;
-
+    console.log(studentId);
+    
     const [student, loans, dbTransactions] = await Promise.all([
       Student.findById(studentId),
       Loan.find({ studentId }).sort({ createdAt: -1 }),

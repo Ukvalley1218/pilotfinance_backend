@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import User from "../models/User.js"; // Unified User model
+import { Student } from "../models/student.model.js";
 
 export const protect = async (req, res, next) => {
   let token;
@@ -35,14 +36,18 @@ export const protect = async (req, res, next) => {
 
     // 5. Fetch User from Database
     // Using a try-catch inner block to catch specifically DB Timeouts
-    req.user = await User.findById(userId).select("-password");
+    const user =
+      (await User.findById(userId).select("-password")) ||
+      (await Student.findById(userId).select("-password"));
 
-    if (!req.user) {
+    if (!user) {
       return res.status(401).json({
         success: false,
         message: "User account no longer exists. Please login again.",
       });
     }
+
+    req.user = user;
 
     next();
   } catch (error) {
