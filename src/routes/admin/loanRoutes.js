@@ -15,7 +15,7 @@ import {
 import { protect, adminOnly } from "../../middlewares/authMiddleware.js";
 
 const router = express.Router();
-router.use(protect, adminOnly);
+
 /**
  * All routes are prefixed with /api/loan in server.js
  */
