@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
-import express from "express";
+
 
 const studentSchema = new mongoose.Schema(
   {
@@ -28,6 +28,7 @@ const studentSchema = new mongoose.Schema(
       type: String,
       required: true,
       lowercase: true,
+        unique: true,   // ✅ ADD THIS
       trim: true,
     },
     phone: {
@@ -37,6 +38,20 @@ const studentSchema = new mongoose.Schema(
     address: {
       type: String,
     },
+    education: {
+      type: String,
+    },
+    maritalStatus: {
+      type: String,
+    },
+    dob: {
+      type: Date,
+    },
+    gender: {
+  type: String,
+  enum: ["Male", "Female", "Other"],
+},
+    
     password: { type: String, required: true, minlength: 6 },
     isEmailVerified: { type: Boolean, default: false },
     // ✅ ADD THESE

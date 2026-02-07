@@ -35,10 +35,10 @@ export const updateProfile = async (req, res) => {
 
     // Destructure fields from frontend
     const {
-      fullName,
+      name,
       phone,
       dob,
-      state,
+      
       education,
       gender,
       maritalStatus,
@@ -46,10 +46,10 @@ export const updateProfile = async (req, res) => {
     } = req.body;
 
     // Update only if fields are provided in the request
-    if (fullName !== undefined) user.fullName = fullName;
+    if (name !== undefined) user.name = name;
     if (phone !== undefined) user.phone = phone;
     if (dob !== undefined) user.dob = dob;
-    if (state !== undefined) user.state = state;
+  
     if (education !== undefined) user.education = education;
     if (gender !== undefined) user.gender = gender;
     if (maritalStatus !== undefined) user.maritalStatus = maritalStatus;
