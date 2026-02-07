@@ -9,100 +9,78 @@ import mongoose from "mongoose";
  */
 export const submitLoanRequest = async (req, res) => {
   try {
-    if (!req.user || !req.user.id) {
-      return res
-        .status(401)
-        .json({ success: false, msg: "Auth failed. No User ID." });
+    const studentId = req.user.id;
+
+    const student = await Student.findById(studentId);
+    if (!student) return res.status(404).json({ msg: "Student not found" });
+
+    if (student.kycStatus !== "Verified") {
+      return res.status(400).json({ msg: "Complete KYC before applying" });
     }
 
     const {
       title,
       category,
-      totalAmount, // This is the Principal (e.g., 10,500)
+      totalAmount,
       period,
       interestRate,
-      monthlyPayment: frontendMonthlyPayment,
+      monthlyPayment,
       lastFourDigits,
     } = req.body;
 
-    const userId = req.user.id;
-
-    // Category Guard: Prevent multiple pending applications for same type
-    const existingPending = await Loan.findOne({
-      userId,
-      category,
-      status: "Pending",
-    });
-    if (existingPending) {
-      return res.status(400).json({
-        success: false,
-        msg: `You already have a pending ${category} loan application.`,
-      });
-    }
-
+    // Prevent multiple active loans
     const existingActiveLoan = await Loan.findOne({
-      userId,
-      status: { $nin: ["Completed", "Rejected", "Closed"] }, // NOT completed
+      studentId,
+      status: { $nin: ["Completed", "Rejected"] },
     });
 
     if (existingActiveLoan) {
       return res.status(400).json({
-        success: false,
-        msg: "You already have an active loan. Please complete it before applying for a new one.",
+        msg: "You already have an active or pending loan",
       });
     }
 
-    // EMI CALCULATIONS
     const n = parseInt(period) || 12;
-    const P = Number(totalAmount); // Principal requested
+    const P = Number(totalAmount);
     const r = (interestRate || 2.5) / 100;
 
-    if (isNaN(P)) {
-      return res
-        .status(400)
-        .json({ success: false, msg: "Invalid amount provided." });
-    }
-
-    const emiFormula = (P * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
-    const finalMonthlyPayment = Math.round(
-      frontendMonthlyPayment || emiFormula,
+    const emi = Math.round(
+      monthlyPayment ||
+      (P * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1)
     );
-    const totalDebtIncludingInterest = Math.round(finalMonthlyPayment * n);
+
+    const totalDebt = emi * n;
 
     const payoffDate = new Date();
     payoffDate.setMonth(payoffDate.getMonth() + n);
 
-    const newLoan = new Loan({
-      userId,
+    const newLoan = await Loan.create({
+      studentId,
       title: title || `${category} Loan Request`,
       category: category || "Education",
-
-      // --- THE LOGIC Snapshot ---
-      principalRequested: P, // PERMANENT: e.g. $10,500
-      totalWithInterest: totalDebtIncludingInterest, // PERMANENT: e.g. $13,500
-      totalAmount: totalDebtIncludingInterest, // LIVE: Decreases as student pays
-
+      principalRequested: P,
+      totalWithInterest: totalDebt,
+      totalAmount: totalDebt,
       paidAmount: 0,
-      monthlyPayment: finalMonthlyPayment,
+      monthlyPayment: emi,
       interestRate: interestRate || 2.5,
       period: `${n} Months`,
       payoffDate,
-      lastFourDigits: lastFourDigits || "0000",
-      status: "Requested",
+      lastFourDigits,
+      status: "Requested", // waits for Partner → Admin flow
     });
 
-    await newLoan.save();
+    // Update student loan lifecycle
+    student.loanStatus = "Applied";
+    await student.save();
 
-    res.status(201).json({
-      success: true,
-      msg: `${category} loan application submitted successfully!`,
-      loan: newLoan,
-    });
+    res.status(201).json({ success: true, loan: newLoan });
   } catch (err) {
-    console.error("🔥 LOAN SUBMISSION ERROR:", err);
-    res.status(500).json({ success: false, msg: "Internal Server Error" });
+    console.error(err);
+    res.status(500).json({ msg: "Loan submission failed" });
   }
 };
+
 
 // --- 2. GET USER LOANS ---
 /**
@@ -110,16 +88,14 @@ export const submitLoanRequest = async (req, res) => {
  */
 export const getUserLoans = async (req, res) => {
   try {
-    const loans = await Loan.find({ userId: req.user.id }).sort({
-      createdAt: -1,
-    });
-    res.status(200).json({ success: true, count: loans.length, data: loans });
-  } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, msg: "Error fetching loan history" });
+    const studentId = req.user.id;
+    const loans = await Loan.find({ studentId }).sort({ createdAt: -1 });
+    res.json({ success: true, data: loans });
+  } catch {
+    res.status(500).json({ msg: "Error fetching loans" });
   }
 };
+
 
 // --- 3. GET LOAN BY ID ---
 /**
@@ -127,14 +103,19 @@ export const getUserLoans = async (req, res) => {
  */
 export const getLoanById = async (req, res) => {
   try {
-    const loan = await Loan.findById(req.params.id);
-    if (!loan)
-      return res.status(404).json({ success: false, msg: "Loan not found" });
-    res.status(200).json({ success: true, loan });
-  } catch (err) {
-    res.status(500).json({ success: false, msg: "Server Error" });
+    const loan = await Loan.findOne({
+      _id: req.params.id,
+      studentId: req.user.id,
+    });
+
+    if (!loan) return res.status(404).json({ msg: "Loan not found" });
+
+    res.json({ success: true, loan });
+  } catch {
+    res.status(500).json({ msg: "Server Error" });
   }
 };
+
 
 // --- 4. REPAY LOAN (Logic Fix for $0 Display Bug) ---
 /**
@@ -145,46 +126,38 @@ export const repayLoan = async (req, res) => {
     const { loanId, amount } = req.body;
     const paymentAmount = Number(amount);
 
-    const loan = await Loan.findById(loanId);
-    if (!loan)
-      return res
-        .status(404)
-        .json({ success: false, msg: "Loan record not found" });
+    const loan = await Loan.findOne({
+      _id: loanId,
+      studentId: req.user.id,
+    });
 
-    // 1. Update Paid Amount (Increments: 0 -> 8500 -> 10500)
+    if (!loan) return res.status(404).json({ msg: "Loan not found" });
+
     loan.paidAmount += paymentAmount;
-
-    // 2. MATH FIX: Update Remaining Balance
-    // Balance = (Permanent Total Debt) - (Total Amount Paid)
-    // This ensures totalAmount correctly hits $0 without affecting principalRequested
     loan.totalAmount = Math.max(0, loan.totalWithInterest - loan.paidAmount);
 
-    // 3. Status handling
     if (loan.totalAmount <= 0) {
       loan.status = "Completed";
     }
 
     await loan.save();
 
-    // Create a Transaction record
     await Transaction.create({
       id: `TXN-PAY-${Math.floor(100000 + Math.random() * 900000)}`,
-      userId: req.user.id,
+      studentId: req.user.id,
       type: "Debit",
       amount: paymentAmount,
       desc: `Repayment for ${loan.category} Loan`,
       status: "Completed",
     });
 
-    res.status(200).json({
+    res.json({
       success: true,
-      msg: "Payment successful",
-      remainingBalance: loan.totalAmount, // Sends 0 if paid off
+      remainingBalance: loan.totalAmount,
     });
   } catch (err) {
-    console.error("🔥 REPAYMENT ERROR:", err);
-    res
-      .status(500)
-      .json({ success: false, msg: "Repayment processing failed" });
+    console.error(err);
+    res.status(500).json({ msg: "Repayment failed" });
   }
 };
+

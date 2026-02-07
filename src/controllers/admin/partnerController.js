@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
-import { Partner } from "../../models/partner.model.js";
+import User from "../../models/User.js";
+import bcrypt from "bcryptjs";
 import { Notification } from "../../models/notification.model.js";
 
 /**
@@ -8,52 +9,46 @@ import { Notification } from "../../models/notification.model.js";
  */
 export const createPartner = async (req, res) => {
   try {
-    const { name, email, phone } = req.body;
+    const { name, email, phone, password } = req.body;
 
-    // 1. Backend Validation
-    if (!name || !email || !phone) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Missing Required Fields: Name, Email, and Phone are mandatory.",
-      });
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({ message: "Name, email, phone, password required" });
     }
 
     const cleanEmail = email.toLowerCase().trim();
 
-    // 2. Check for duplicate email
-    const existingPartner = await Partner.findOne({ email: cleanEmail });
-    if (existingPartner) {
-      return res.status(409).json({
-        success: false,
-        message: "A partner with this email address already exists.",
-      });
-    }
+    const existing = await Partner.findOne({ email: cleanEmail });
+    if (existing) return res.status(409).json({ message: "Partner already exists" });
 
-    // 3. Save to database
+    // 1️⃣ Create Login Account
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const user = await User.create({
+      fullName: name,
+      email: cleanEmail,
+      phone,
+      password: hashedPassword,
+      role: "Partner",
+      isEmailVerified: true,
+    });
+
+    // 2️⃣ Create Partner Business Profile
     const partner = await Partner.create({
       ...req.body,
       email: cleanEmail,
+      userId: user._id, // link login account
     });
 
-    // --- Dynamic Notification Trigger ---
     await Notification.create({
       type: "success",
       message: `New Partner Registered: ${partner.name}`,
       link: `/admin/partners/${partner._id}`,
     });
 
-    return res.status(201).json({
-      success: true,
-      message: "Partner registered successfully",
-      data: partner,
-    });
-  } catch (error) {
-    console.error("Critical Create Partner Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error: Failed to save partner record.",
-    });
+    res.status(201).json({ success: true, data: partner });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Failed to create partner" });
   }
 };
 
@@ -64,59 +59,27 @@ export const createPartner = async (req, res) => {
 export const updatePartner = async (req, res) => {
   try {
     const { id } = req.params;
-
     const partner = await Partner.findById(id);
-    if (!partner) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner record not found.",
+
+    if (!partner) return res.status(404).json({ message: "Partner not found" });
+
+    const updated = await Partner.findByIdAndUpdate(id, req.body, { new: true });
+
+    // 🔄 Sync login account
+    if (partner.userId) {
+      await User.findByIdAndUpdate(partner.userId, {
+        fullName: updated.name,
+        email: updated.email,
+        phone: updated.phone,
       });
     }
 
-    // Duplicate email check for updates
-    if (req.body.email && req.body.email.toLowerCase() !== partner.email) {
-      const emailExists = await Partner.findOne({
-        email: req.body.email.toLowerCase(),
-      });
-      if (emailExists) {
-        return res.status(409).json({
-          success: false,
-          message: "The new email is already in use by another partner.",
-        });
-      }
-    }
-
-    const updatedPartner = await Partner.findByIdAndUpdate(
-      id,
-      {
-        $set: {
-          ...req.body,
-          email: req.body.email?.toLowerCase() || partner.email,
-        },
-      },
-      { new: true, runValidators: true }
-    );
-
-    // --- Dynamic Notification Trigger for Updates ---
-    await Notification.create({
-      type: "info",
-      message: `Partner Profile Updated: ${updatedPartner.name}`,
-      link: `/admin/partners/${updatedPartner._id}`,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Partner profile updated successfully",
-      data: updatedPartner,
-    });
-  } catch (error) {
-    console.error("Update Partner Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Server error while updating partner record.",
-    });
+    res.json({ success: true, data: updated });
+  } catch (err) {
+    res.status(500).json({ message: "Update failed" });
   }
 };
+
 
 /**
  * @desc Get All Partners (With Advanced Pagination & Filtering)

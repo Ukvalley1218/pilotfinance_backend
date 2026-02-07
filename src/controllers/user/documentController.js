@@ -1,23 +1,18 @@
-import UserDocuments from "../../models/UserDocuments.js";
+import { Student } from "../../models/student.model.js";
 import cloudinary from "../../services/cloudinary.service.js";
 
 // --- 1. FETCH ALL SAVED DOCUMENTS ---
 export const getUserDocuments = async (req, res) => {
   try {
-    const data = await UserDocuments.findOne({ userId: req.user.id });
+    const student = await Student.findById(req.user.id).select("documents");
 
-    if (!data) {
+    if (!student || !student.documents.length) {
       return res.status(200).json({ success: true, data: { documents: [] } });
     }
 
-    const mappedDocs = data.documents.map((doc) => ({
-      ...doc.toObject(),
-      status: doc.status === "Pending" ? "Sign Now" : doc.status,
-    }));
-
     res.status(200).json({
       success: true,
-      data: { ...data.toObject(), documents: mappedDocs },
+      data: { documents: student.documents },
     });
   } catch (err) {
     console.error("Fetch Documents Error:", err);
@@ -29,59 +24,49 @@ export const getUserDocuments = async (req, res) => {
 export const uploadDocument = async (req, res) => {
   try {
     const { docId } = req.params;
-    const userId = req.user.id;
+    const index = parseInt(docId) - 1;
 
     if (!req.file) {
       return res.status(400).json({ success: false, msg: "No file provided" });
     }
 
-    let userDocs = await UserDocuments.findOne({ userId });
+    const student = await Student.findById(req.user.id);
+    if (!student) return res.status(404).json({ msg: "Student not found" });
 
-    if (!userDocs) {
-      userDocs = new UserDocuments({
-        userId,
-        documents: [
-          { name: "Loan Application Agreement", status: "Sign Now" },
-          { name: "KYC Declaration Form", status: "Sign Now" },
-          { name: "Consent for Credit Check (Canada)", status: "Sign Now" },
-          { name: "POF Verification Declaration", status: "Sign Now" },
-          { name: "Tuition Fee Guarantee Agreement", status: "Sign Now" },
-          { name: "Recruitment Partner Consent Form", status: "Sign Now" },
-        ],
-      });
+    // Initialize slots if first time
+    if (!student.documents || student.documents.length === 0) {
+      student.documents = [
+        { name: "Loan Application Agreement" },
+        { name: "KYC Declaration Form" },
+        { name: "Consent for Credit Check (Canada)" },
+        { name: "POF Verification Declaration" },
+        { name: "Tuition Fee Guarantee Agreement" },
+        { name: "Recruitment Partner Consent Form" },
+      ];
     }
 
-    const index = parseInt(docId) - 1;
-
-  if (userDocs.documents[index]) {
-  userDocs.documents.forEach((doc) => {
-    if (doc.status === "Pending") {
-      doc.status = "Sign Now";
+    if (!student.documents[index]) {
+      return res.status(404).json({ success: false, msg: "Invalid document slot" });
     }
-  });
 
-  userDocs.documents[index].status = "Uploaded";
+    student.documents[index].status = "Uploaded";
+    student.documents[index].fileUrl = req.file.path;
+    student.documents[index].fileType = req.file.mimetype;
+    student.documents[index].uploadedAt = new Date();
 
-  userDocs.documents[index].fileUrl = req.file.path; // ✅ Cloudinary URL
-  userDocs.documents[index].fileType = req.file.mimetype;
-  userDocs.documents[index].uploadedAt = Date.now();
+    await student.save();
 
-  await userDocs.save();
-
-  return res.status(200).json({
-    success: true,
-    msg: "Document synchronized successfully",
-    data: userDocs,
-  });
-}
-
-
-    res.status(404).json({ success: false, msg: "Invalid document slot" });
+    res.status(200).json({
+      success: true,
+      msg: "Document uploaded successfully",
+      data: student.documents,
+    });
   } catch (err) {
     console.error("Document Upload Error:", err);
     res.status(500).json({ success: false, msg: "Internal Server Error" });
   }
 };
+
 
 // --- 3. DELETE/RESET DOCUMENT (The fix for your crash) ---
 /**
@@ -92,33 +77,23 @@ export const uploadDocument = async (req, res) => {
 export const deleteSignature = async (req, res) => {
   try {
     const { docId } = req.params;
-    const userId = req.user.id;
-
-    const userDocs = await UserDocuments.findOne({ userId });
-
-    if (!userDocs) {
-      return res
-        .status(404)
-        .json({ success: false, msg: "No documents found" });
-    }
-
-    // Since docId is 1-6, and array index is 0-5
     const index = parseInt(docId) - 1;
 
-    if (userDocs.documents[index]) {
-      // RESET the specific document slot instead of removing it from array
-      // This maintains the order of your 6 required documents
-      userDocs.documents[index].status = "Sign Now";
-      userDocs.documents[index].fileUrl = null;
-      userDocs.documents[index].fileType = null;
-      userDocs.documents[index].uploadedAt = null;
+    const student = await Student.findById(req.user.id);
+    if (!student) return res.status(404).json({ msg: "Student not found" });
 
-      await userDocs.save();
+    if (student.documents[index]) {
+      student.documents[index].status = "Sign Now";
+      student.documents[index].fileUrl = null;
+      student.documents[index].fileType = null;
+      student.documents[index].uploadedAt = null;
+
+      await student.save();
 
       return res.status(200).json({
         success: true,
-        msg: "File removed and status reset",
-        data: userDocs,
+        msg: "File removed and reset",
+        data: student.documents,
       });
     }
 
@@ -132,16 +107,13 @@ export const deleteSignature = async (req, res) => {
 // --- 4. ADMIN: FETCH ALL SIGNATURES ---
 export const getAllSignaturesAdmin = async (req, res) => {
   try {
-    const allDocs = await UserDocuments.find()
-      .populate("userId", "fullName email")
-      .sort({ updatedAt: -1 });
+    const students = await Student.find({ "documents.fileUrl": { $exists: true } })
+      .select("name email documents");
 
-    res.status(200).json({
-      success: true,
-      data: allDocs,
-    });
+    res.status(200).json({ success: true, data: students });
   } catch (err) {
     console.error("Admin Fetch Signatures Error:", err);
     res.status(500).json({ success: false, msg: "Server Error" });
   }
 };
+

@@ -34,50 +34,104 @@ const studentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    address:{
-      type: String
+    address: {
+      type: String,
     },
-   password: { type: String, required: true, minlength: 6 },
-isEmailVerified: { type: Boolean, default: false },
+    password: { type: String, required: true, minlength: 6 },
+    isEmailVerified: { type: Boolean, default: false },
 
-
-    // --- KYC & ADDRESS DATA (From User Panel Uploads) ---
-    kycData: {
-      bankName: { type: String, default: "" },
+    kycProfile: {
       bankAccount: { type: String, default: "" },
+      bankName: { type: String, default: "" },
       ifscCode: { type: String, default: "" },
-      idType: { type: String, default: "National ID" },
-      documentType: { type: String, default: "" }, // Added to store select value
-
-      // File URLs
-      // FIXED: Added missing fields so MongoDB doesn't delete them
-      front: { type: String, default: null }, // Section 1 Front
-      back: { type: String, default: null }, // Section 1 Back
-      idFront: { type: String, default: null },
-      idBack: { type: String, default: null },
-      selfie: { type: String, default: null }, // Passport Photo
-      passbook: { type: String, default: null },
-      loa: { type: String, default: null },
-      addressProofFile: { type: String, default: null },
-
-      // Address Details
+      idType: { type: String, default: "" },
+      documentType: { type: String, default: "" },
+      submittedAt: Date,
       addressState: { type: String, default: "" },
       addressCity: { type: String, default: "" },
       postalCode: { type: String, default: "" },
       addressDocType: { type: String, default: "Bank Statement" },
-      submittedAt: { type: Date },
+    },
+
+    // --- KYC & ADDRESS DATA (From User Panel Uploads) ---
+    kycData: {
+      // File URLs
+      // FIXED: Added missing fields so MongoDB doesn't delete them
+      front: {
+        url: String,
+        status: { type: String, default: "Pending" },
+        remark: String,
+        verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        verifiedAt: Date,
+      },
+      back: {
+        url: String,
+        status: { type: String, default: "Pending" },
+        remark: String,
+        verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        verifiedAt: Date,
+      },
+      idFront: {
+        url: String,
+        status: { type: String, default: "Pending" },
+        remark: String,
+        verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        verifiedAt: Date,
+      },
+      idBack: {
+        url: String,
+        status: { type: String, default: "Pending" },
+        remark: String,
+        verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        verifiedAt: Date,
+      },
+      selfie: {
+        url: String,
+        status: { type: String, default: "Pending" },
+        remark: String,
+        verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        verifiedAt: Date,
+      },
+      passbook: {
+        url: String,
+        status: { type: String, default: "Pending" },
+        remark: String,
+        verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        verifiedAt: Date,
+      },
+      loa: {
+        url: String,
+        status: { type: String, default: "Pending" },
+        remark: String,
+        verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        verifiedAt: Date,
+      },
+      addressProof: {
+        url: String,
+        status: { type: String, default: "Pending" },
+        remark: String,
+        verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        verifiedAt: Date,
+      },
+
+      // Address Details
     },
 
     // --- DIGITAL SIGNATURES ---
     documents: [
-      {
-        name: String,
-        status: { type: String, default: "Uploaded" },
-        fileUrl: String,
-        fileType: String,
-        signedAt: { type: Date, default: Date.now },
-      },
-    ],
+  {
+    name: String,
+    status: {
+      type: String,
+      enum: ["Sign Now", "Uploaded", "Signed"],
+      default: "Sign Now",
+    },
+    fileUrl: String,
+    fileType: String,
+    uploadedAt: Date,
+  },
+],
+
 
     // --- APPLICATION DATA ---
     agency: { type: String, default: "" },
@@ -99,8 +153,8 @@ isEmailVerified: { type: Boolean, default: false },
     },
     kycStatus: {
       type: String,
-      enum: ["Pending", "Verified", "Rejected"],
-      default: "Pending",
+      enum: ["Not Submitted", "Pending", "Partially Verified", "Verified"],
+      default: "Not Submitted",
     },
     loan: {
       type: String,
@@ -121,12 +175,9 @@ studentSchema.pre("save", async function () {
   this.password = await bcrypt.hash(this.password, salt);
 });
 
-
-
 // Method to verify password during login
 studentSchema.methods.comparePassword = async function (candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };
-
 
 export const Student = mongoose.model("Student", studentSchema);

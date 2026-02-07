@@ -1,52 +1,21 @@
 import express from "express";
+import { protect, adminOnly } from "../../middlewares/authMiddleware.js";
 import {
   createPartner,
   updatePartner,
   getAllPartners,
   getPartnerById,
   deletePartner,
-  downloadPartnerReportPDF,
 } from "../../controllers/admin/partnerController.js";
-import { protect } from "../../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-/**
- * All routes are prefixed with /api/partner in server.js
- */
+router.use(protect, adminOnly);
 
-// --- GET ROUTES ---
-// Handles GET /api/partner
-router.get("/", protect, getAllPartners);
-
-// Handles GET /api/partner/partners (Main Table)
-router.get("/partners", protect, getAllPartners);
-
-// --- POST ROUTES ---
-// Handles POST /api/partner
-router.post("/", protect, createPartner);
-
-// Handles POST /api/partner/partners (Registration)
-router.post("/partners", protect, createPartner);
-
-// --- ID BASED ROUTES ---
-
-// Handles GET /api/partner/:id
-router.get("/:id", protect, getPartnerById);
-
-// FIX: Handles GET /api/partner/partners/:id
-// This fixes the 404 in PartnerDetails.jsx when clicking "View"
-router.get("/partners/:id", protect, getPartnerById);
-
-router.get("/partners/:id/pdf",protect, downloadPartnerReportPDF);
-
-// Handles PUT /api/partner/:id
-router.put("/:id", protect, updatePartner);
-
-// Handles PUT /api/partner/partners/:id
-router.put("/partners/:id", protect, updatePartner);
-
-// Handles DELETE /api/partner/:id
-router.delete("/:id", protect, deletePartner);
+router.get("/", getAllPartners);
+router.post("/", createPartner);
+router.get("/:id", getPartnerById);
+router.put("/:id", updatePartner);
+router.delete("/:id", deletePartner);
 
 export default router;

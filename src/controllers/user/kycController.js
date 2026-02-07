@@ -1,48 +1,37 @@
-import User from "../../models/User.js";
+
 import { Student } from "../../models/student.model.js";
 
 // --- 1. GET KYC STATUS & DATA ---
 export const getKycStatus = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select(
-      "kycData kycStatus dob country state ssnPin phone",
+    const student = await Student.findById(req.user.id).select(
+      "kycData kycStatus dob country state phone"
     );
-    if (!user)
-      return res.status(404).json({ success: false, msg: "User not found" });
+
+    if (!student)
+      return res.status(404).json({ success: false, msg: "Student not found" });
 
     res.status(200).json({
       success: true,
-      status: user.kycStatus,
+      status: student.kycStatus,
       data: {
-        ...(user.kycData || {}),
-        dob: user.dob,
-        country: user.country,
-        state: user.state,
-        ssnPin: user.ssnPin,
-        phone: user.phone,
+        ...(student.kycData || {}),
+        dob: student.dob,
+        country: student.country,
+        state: student.state,
+        phone: student.phone,
       },
     });
-  } catch (err) {
+  } catch {
     res.status(500).json({ success: false, msg: "Server Error" });
   }
 };
 
+
 // --- 2. HANDLE PERSONAL INFO (Step 1) ---
 export const updatePersonalInfo = async (req, res) => {
   try {
-    // UPDATED: Added phone, uni, course, and zipCode to match frontend PersonalInfo.jsx
-    const {
-      dob,
-      country,
-      state,
-      phone,
-      uni,
-      course,
-      zipCode,
-      pin1,
-      pin2,
-      pin3,
-    } = req.body;
+    const { dob, country, state, phone, uni, course, zipCode, pin1, pin2, pin3 } = req.body;
 
     const fullPin = pin1 && pin2 && pin3 ? `${pin1}-${pin2}-${pin3}` : zipCode;
 
@@ -50,46 +39,31 @@ export const updatePersonalInfo = async (req, res) => {
       dob,
       country,
       state,
-      phone, // Syncing phone to User Model
+      phone,
+      uni,
+      course,
       kycStatus: "Pending",
     };
+
     if (fullPin) updateFields.ssnPin = fullPin;
 
-    const updatedUser = await User.findByIdAndUpdate(
+    const updatedStudent = await Student.findByIdAndUpdate(
       req.user.id,
       { $set: updateFields },
-      { new: true },
-    ).select("-password");
-
-    // SYNC TO STUDENT MODEL
-    await Student.findOneAndUpdate(
-      { userId: req.user.id },
-      {
-        $set: {
-          kycStatus: "Pending",
-          country: country,
-          dob: dob,
-          state: state,
-          phone: phone, // FIX: Now saving phone from form
-          uni: uni, // FIX: Now saving university from form
-          course: course, // FIX: Now saving course from form
-          name: updatedUser.fullName,
-          email: updatedUser.email,
-        },
-      },
-      { upsert: true, new: true },
+      { new: true }
     );
 
     res.status(200).json({
       success: true,
-      msg: "Personal Info saved & synced",
-      data: updatedUser,
+      msg: "Personal info saved",
+      data: updatedStudent,
     });
   } catch (err) {
-    console.error("Update Personal Info Error:", err);
+    console.error(err);
     res.status(500).json({ msg: "Server Error during personal info update" });
   }
 };
+
 
 // --- 3. HANDLE DOCUMENTS & BANK DETAILS (Step 2) ---
 export const submitKycDocuments = async (req, res) => {
@@ -97,58 +71,46 @@ export const submitKycDocuments = async (req, res) => {
     const { bankAccount, bankName, ifscCode, idType, documentType } = req.body;
     const files = req.files;
 
-    let user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ msg: "User not found" });
+    const student = await Student.findById(req.user.id);
+    if (!student) return res.status(404).json({ msg: "Student not found" });
 
-    const currentKycData = user.kycData || {};
+    // 🔹 Update document-level files
+    const updateDoc = (field) => {
+      if (files?.[field]) {
+        student.kycData[field] = {
+          url: files[field][0].path,
+          status: "Pending",
+          remark: "",
+          verifiedBy: null,
+          verifiedAt: null,
+        };
+      }
+    };
 
-    const getUrl = (fieldname) =>
-  files && files[fieldname]
-    ? files[fieldname][0].path   // Cloudinary URL
-    : currentKycData[fieldname];
+    ["front", "back", "idFront", "idBack", "selfie", "passbook", "loa"].forEach(updateDoc);
 
+    // 🔹 Save general KYC profile data
+    student.kycProfile = {
+      bankAccount,
+      bankName,
+      ifscCode,
+      addressState,
+      addressCity,
+      postalCode,
+      addressDocType,
+      idType,
+      documentType,
+      submittedAt: new Date(),
+    };
 
-   const updatedKycData = {
-  ...currentKycData,
-  documentType,
-  bankAccount,
-  bankName,
-  ifscCode,
-  idType,
-  front: getUrl("back"),
-  back: getUrl("back"),
-  idFront: getUrl("idFront"),
-  idBack: getUrl("idBack"),
-  selfie: getUrl("selfie"),
-  passbook: getUrl("passbook"),
-  loa: getUrl("loa"),
-  submittedAt: Date.now(),
-};
+    student.kycStatus = "Pending";
 
-
-    // Update User Model
-    user.kycData = updatedKycData;
-    user.kycStatus = "Pending";
-    await user.save();
-
-    // --- SYNC TO STUDENT MODEL (Admin visibility) ---
-    await Student.findOneAndUpdate(
-      { userId: req.user.id },
-      {
-        $set: {
-          kycData: updatedKycData,
-          kycStatus: "Pending",
-          name: user.fullName,
-          email: user.email,
-        },
-      },
-      { upsert: true, new: true },
-    );
+    await student.save();
 
     res.status(200).json({
       success: true,
-      msg: "KYC Details synced to Admin",
-      data: updatedKycData,
+      msg: "KYC documents uploaded successfully",
+      documents: student.kycData,
     });
   } catch (err) {
     console.error(err);
@@ -156,51 +118,44 @@ export const submitKycDocuments = async (req, res) => {
   }
 };
 
+
+
 // --- 4. HANDLE ADDRESS PROOF (Step 3) ---
 export const submitAddressProof = async (req, res) => {
   try {
     const { state, city, postalCode, docType } = req.body;
-    const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ msg: "User not found" });
 
-    const currentKyc = user.kycData || {};
+    const student = await Student.findById(req.user.id);
+    if (!student) return res.status(404).json({ msg: "Student not found" });
 
-   const addressProofFile = req.file
-  ? req.file.path   // Cloudinary URL
-  : currentKyc.addressProofFile;
+    if (req.file) {
+      student.kycData.addressProof = {
+        url: req.file.path,
+        status: "Pending",
+        remark: "",
+        verifiedBy: null,
+        verifiedAt: null,
+      };
+    }
 
-    const updatedKycData = {
-      ...currentKyc,
+    // Save address metadata inside profile
+    student.kycProfile = {
+      ...student.kycProfile,
       addressState: state,
       addressCity: city,
-      postalCode: postalCode,
+      postalCode,
       addressDocType: docType,
-      addressProofFile: addressProofFile,
     };
 
-    // Update User Model
-    await User.findByIdAndUpdate(req.user.id, {
-      $set: {
-        kycData: updatedKycData,
-        kycStatus: "Pending",
-      },
+    student.kycStatus = "Pending";
+
+    await student.save();
+
+    res.status(200).json({
+      success: true,
+      msg: "Address proof uploaded successfully",
+      documents: student.kycData.addressProof,
     });
-
-    // --- SYNC TO STUDENT MODEL (Admin visibility) ---
-    await Student.findOneAndUpdate(
-      { userId: req.user.id },
-      {
-        $set: {
-          kycData: updatedKycData,
-          kycStatus: "Pending",
-        },
-      },
-      { upsert: true, new: true },
-    );
-
-    res
-      .status(200)
-      .json({ success: true, msg: "Address proof synced to Admin" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: "Server Error during address proof" });

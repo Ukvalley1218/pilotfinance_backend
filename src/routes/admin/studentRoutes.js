@@ -1,5 +1,5 @@
 import express from "express";
-import { protect } from "../../middlewares/authMiddleware.js";
+import { protect,adminOnly } from "../../middlewares/authMiddleware.js";
 import { Student } from "../../models/student.model.js";
 import {
   createStudent,
@@ -10,7 +10,7 @@ import {
 } from "../../controllers/admin/studentController.js";
 
 const router = express.Router();
-
+router.use(protect, adminOnly); // Apply to all routes in this router
 /**
  * PREFIX: /api/admin/student
  */
@@ -28,25 +28,20 @@ router.delete("/maintenance/clear-data", protect, async (req, res) => {
   }
 });
 
-// --- 1. DATA AGGREGATION ROUTES ---
-router.get("/all", protect, getAllStudents);
-router.get("/students", protect, getAllStudents);
+
+
 router.get("/", protect, getAllStudents);
 
-// --- 2. VERIFICATION & PROFILE ROUTES ---
-// ADDED THIS LINE to fix your 404 error:
-router.put("/update/:id", protect, updateStudent);
+
+
 
 // Standard ID lookups
 router.get("/:id", protect, getStudentById);
 router.put("/:id", protect, updateStudent);
 
-// Support for nested paths
-router.get("/students/:id", protect, getStudentById);
-router.put("/students/:id", protect, updateStudent);
 
-// --- 3. MANAGEMENT ROUTES ---
-router.post("/add", protect, createStudent);
+
+
 router.post("/", protect, createStudent);
 router.delete("/:id", protect, deleteStudent);
 
