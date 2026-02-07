@@ -1,6 +1,5 @@
 import { Student } from "../../models/student.model.js";
 import User from "../../models/User.js";
-import { Student } from "../../models/student.model.js";
 // @desc    Get User Profile
 // @route   GET /api/auth/profile
 export const getProfile = async (req, res) => {
