@@ -1,3 +1,4 @@
+import { Student } from "../../models/student.model.js";
 import Loan from "../../models/loan.js";
 import mongoose from "mongoose";
 
@@ -7,51 +8,40 @@ import mongoose from "mongoose";
  */
 export const createLoan = async (req, res) => {
   try {
-    const { userId, totalAmount, requestedAmount, period, interestRate } =
-      req.body;
-    const finalAmount = Number(totalAmount || requestedAmount);
+    const { studentId, category, principalRequested, period, interestRate } = req.body;
 
-    if (!userId || !finalAmount) {
-      return res.status(400).json({
-        success: false,
-        message: "User ID and loan amount are required",
-      });
-    }
+    const student = await Student.findById(studentId);
+    if (!student) return res.status(404).json({ message: "Student not found" });
 
-    // --- EMI AUTO-CALCULATION SYNC ---
-    // This ensures consistency even if created outside the Student's LoanConfigure page
     const n = parseInt(period) || 12;
-    const r = (Number(interestRate) || 2.5) / 100; // Monthly rate decimal
+    const r = (interestRate || 2.5) / 100;
 
-    // Monthly Reducing Balance Formula
-    const emi =
-      (finalAmount * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
-    const totalWithInterest = Math.round(emi * n);
+    const emi = Math.round(
+      (principalRequested * r * Math.pow(1 + r, n)) /
+      (Math.pow(1 + r, n) - 1)
+    );
 
-    const payoffDate = new Date();
-    payoffDate.setMonth(payoffDate.getMonth() + n);
+    const totalWithInterest = emi * n;
 
     const loan = await Loan.create({
-      ...req.body,
-      totalAmount: finalAmount,
-      totalWithInterest: req.body.totalWithInterest || totalWithInterest,
-      monthlyPayment: req.body.monthlyPayment || Math.round(emi),
-      interestRate: Number(interestRate) || 2.5,
-      payoffDate: req.body.payoffDate || payoffDate,
-      status: req.body.status || "Pending",
+      studentId,
+      partnerId: student.referredBy || null,
+      category,
+      principalRequested,
+      totalWithInterest,
+      totalAmount: totalWithInterest,
+      monthlyPayment: emi,
+      interestRate,
+      period: `${n} Months`,
+      status: "Approved",
     });
 
-    return res.status(201).json({
-      success: true,
-      message: "Loan application submitted successfully",
-      data: loan,
-    });
-  } catch (error) {
-    console.error("Create Loan Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error during application",
-    });
+    student.loanStatus = "Approved";
+    await student.save();
+
+    res.status(201).json({ success: true, data: loan });
+  } catch (err) {
+    res.status(500).json({ message: "Loan creation failed" });
   }
 };
 
@@ -60,94 +50,62 @@ export const createLoan = async (req, res) => {
  */
 export const updateLoan = async (req, res) => {
   try {
-    const { id } = req.params;
+    const loan = await Loan.findById(req.params.id);
+    if (!loan) return res.status(404).json({ message: "Loan not found" });
 
-    const loan = await Loan.findById(id);
-    if (!loan) {
-      return res.status(404).json({
-        success: false,
-        message: "Loan record not found",
-      });
+    const { status } = req.body;
+
+    // 🔹 When Admin approves
+    if (status === "Approved") {
+      loan.status = "Approved";
+      await Student.findByIdAndUpdate(loan.studentId, { loanStatus: "Approved" });
     }
 
-    // Logic: Automatically set disbursement date when status is changed to Disbursed
-    if (req.body.status === "Disbursed" && !req.body.disbursementDate) {
-      req.body.disbursementDate = new Date();
+    // 🔹 When Admin disburses
+    if (status === "Disbursed") {
+      loan.status = "Disbursed";
+      loan.disbursementDate = new Date();
+
+      await Student.findByIdAndUpdate(loan.studentId, { loanStatus: "Active" });
     }
 
-    const updatedLoan = await Loan.findByIdAndUpdate(
-      id,
-      { $set: req.body },
-      { new: true, runValidators: true },
-    ).populate("userId", "fullName email");
+    // 🔹 When Admin rejects
+    if (status === "Rejected") {
+      loan.status = "Rejected";
+      await Student.findByIdAndUpdate(loan.studentId, { loanStatus: "Rejected" });
+    }
 
-    return res.status(200).json({
-      success: true,
-      message: "Loan status updated successfully",
-      data: updatedLoan,
-    });
-  } catch (error) {
-    console.error("Update Loan Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update loan status",
-    });
+    Object.assign(loan, req.body);
+    await loan.save();
+
+    res.json({ success: true, data: loan });
+  } catch (err) {
+    res.status(500).json({ message: "Update failed" });
   }
 };
+
 
 /**
  * @desc Get All Loans (Dynamic sync for Admin Dashboard)
  */
 export const getAllLoans = async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 50,
-      search,
-      status,
-      sortBy = "createdAt",
-      order = "desc",
-    } = req.query;
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const { status } = req.query;
     const filter = {};
 
-    if (status && status !== "All Status") filter.status = status;
-
-    if (search) {
-      filter.$or = [
-        { loanId: { $regex: search, $options: "i" } },
-        { status: { $regex: search, $options: "i" } },
-      ];
-    }
-
-    const sortOptions = { [sortBy]: order === "desc" ? -1 : 1 };
+    if (status) filter.status = status;
 
     const loans = await Loan.find(filter)
-      .populate("userId", "fullName email avatar")
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(parseInt(limit));
+      .populate("studentId", "name email phone kycStatus")
+      .populate("partnerId", "fullName companyName email")
+      .sort({ createdAt: -1 });
 
-    const totalRecords = await Loan.countDocuments(filter);
-
-    return res.status(200).json({
-      success: true,
-      pagination: {
-        totalRecords,
-        currentPage: parseInt(page),
-        totalPages: Math.ceil(totalRecords / parseInt(limit)),
-      },
-      data: loans,
-    });
-  } catch (error) {
-    console.error("Get Loans Error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error fetching applications",
-    });
+    res.json({ success: true, data: loans });
+  } catch {
+    res.status(500).json({ message: "Failed to fetch loans" });
   }
 };
+
 
 /**
  * @desc Get Single Loan by ID
@@ -155,20 +113,17 @@ export const getAllLoans = async (req, res) => {
 export const getLoanById = async (req, res) => {
   try {
     const loan = await Loan.findById(req.params.id)
-      .populate("userId", "fullName email phone address avatar")
-      .populate("partnerId", "companyName fullName email");
+      .populate("studentId")
+      .populate("partnerId", "fullName companyName email");
 
-    if (!loan) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Loan not found" });
-    }
+    if (!loan) return res.status(404).json({ message: "Loan not found" });
 
-    return res.status(200).json({ success: true, data: loan });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: "Invalid Loan ID" });
+    res.json({ success: true, data: loan });
+  } catch {
+    res.status(400).json({ message: "Invalid loan ID" });
   }
 };
+
 
 /**
  * @desc Delete Loan
@@ -176,17 +131,13 @@ export const getLoanById = async (req, res) => {
 export const deleteLoan = async (req, res) => {
   try {
     const loan = await Loan.findByIdAndDelete(req.params.id);
-    if (!loan) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Loan not found" });
-    }
-    return res
-      .status(200)
-      .json({ success: true, message: "Loan record deleted" });
-  } catch (error) {
-    return res
-      .status(500)
-      .json({ success: false, message: "Error deleting record" });
+    if (!loan) return res.status(404).json({ message: "Loan not found" });
+
+    await Student.findByIdAndUpdate(loan.studentId, { loanStatus: "Not Applied" });
+
+    res.json({ success: true, message: "Loan deleted" });
+  } catch {
+    res.status(500).json({ message: "Delete failed" });
   }
 };
+

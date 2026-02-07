@@ -144,6 +144,7 @@ otpExpires: { type: Date },
     intake: { type: String, default: "" },
     duration: { type: String, default: "" },
     appId: { type: String, default: "" },
+    avatar:{type:String,default:""},
 
     // --- LOAN SPECIFIC DATA ---
     loanId: { type: String, default: "" },

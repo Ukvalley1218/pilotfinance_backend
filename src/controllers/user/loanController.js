@@ -1,4 +1,5 @@
 import Loan from "../../models/loan.js";
+import { Student } from "../../models/student.model.js";
 import Transaction from "../../models/transaction.model.js";
 import mongoose from "mongoose";
 
