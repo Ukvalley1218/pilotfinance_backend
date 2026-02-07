@@ -15,7 +15,7 @@ export const submitLoanRequest = async (req, res) => {
     const student = await Student.findById(studentId);
     if (!student) return res.status(404).json({ msg: "Student not found" });
 
-    if (student.kycStatus !== "Verified") {
+    if (student.kycStatus !== "Approved") {
       return res.status(400).json({ msg: "Complete KYC before applying" });
     }
 
