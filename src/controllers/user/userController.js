@@ -1,12 +1,13 @@
+import { Student } from "../../models/student.model.js";
 import User from "../../models/User.js";
-
+import { Student } from "../../models/student.model.js";
 // @desc    Get User Profile
 // @route   GET /api/auth/profile
 export const getProfile = async (req, res) => {
   try {
     // Fetch user and exclude sensitive fields
     // Added 'role' and 'isPhoneVerified' to ensure frontend has all UI data
-    const user = await User.findById(req.user.id).select(
+    const user = await Student.findById(req.user.id).select(
       "-password -otpCode -otpExpires"
     );
 
@@ -28,7 +29,7 @@ export const getProfile = async (req, res) => {
 // @route   PUT /api/auth/profile
 export const updateProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await Student.findById(req.user.id);
     if (!user) {
       return res.status(404).json({ success: false, msg: "User not found" });
     }
