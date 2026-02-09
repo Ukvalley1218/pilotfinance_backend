@@ -259,7 +259,7 @@ const mergedData = students.map(student => {
     requestedAmount: activeLoan?.principalRequested || student.requestedAmount,
     status: activeLoan?.status || student.status,
     loan: activeLoan ? "Yes" : "No",
-    loans:activeLoan,
+    Interest:activeLoan?.interestRate 
   };
 });
 
