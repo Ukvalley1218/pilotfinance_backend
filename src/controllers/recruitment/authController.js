@@ -211,6 +211,7 @@ export const linkStudentToPartner = async (req, res) => {
   }
 };
 
+
 // --- 6. GET PARTNER SPECIFIC LOAN LEDGER (STRICT ISOLATION) ---
 export const getPartnerLoans = async (req, res) => {
   try {
@@ -258,6 +259,7 @@ const mergedData = students.map(student => {
     requestedAmount: activeLoan?.principalRequested || student.requestedAmount,
     status: activeLoan?.status || student.status,
     loan: activeLoan ? "Yes" : "No",
+    loans:activeLoan,
   };
 });
 
