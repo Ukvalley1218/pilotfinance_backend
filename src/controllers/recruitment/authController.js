@@ -678,3 +678,38 @@ export const deleteStudentByPartner = async (req, res) => {
     res.status(500).json({ success: false, msg: "Delete failed" });
   }
 };
+
+
+export const getLoanWithStudentById = async (req, res) => {
+  try {
+    const { id } = req.params; // ✅ matches route
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid loan ID" });
+    }
+
+    const loan = await Loan.findById(id)
+      .populate({
+        path: "studentId",
+        select: "-password -otpCode -otpExpires",
+        populate: [
+          { path: "userId", select: "fullName email role" },
+          { path: "referredBy", select: "fullName email" },
+        ],
+      })
+      .populate("partnerId", "fullName email role");
+
+    if (!loan) {
+      return res.status(404).json({ message: "Loan not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      loan,
+      student: loan.studentId,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching loan by ID:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};

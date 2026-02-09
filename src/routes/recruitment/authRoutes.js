@@ -24,6 +24,8 @@ import {
   getWalletData,
   addStudentByPartner,
   deleteStudentByPartner,
+ 
+  getLoanWithStudentById,
 } from "../../controllers/recruitment/authController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
 
@@ -73,6 +75,7 @@ router.post("/login", login);
 
 // 1. Profile & Account Management
 router.get("/me", protect, getMe);
+router.get("/:id", protect, getLoanWithStudentById);
 router.put("/update-me", protect, upload.single("avatar"), updateMe);
 
 
@@ -99,6 +102,8 @@ router.post("/agreement/sign", protect, signAgreement);
 
 // --- ADMIN DATA ROUTE ---
 router.get("/partners", protect, getAllPartners);
+
+// using loan id you can get student detials that own that loan
 
 // 4. Student Management
 router.get("/available-students", protect, getAvailableStudents);
