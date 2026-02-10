@@ -41,7 +41,7 @@ router.get("/:id", protect, getStudentById);
 router.put("/:id", protect, updateStudent);
 
 
-router.get("/stats", protect, getStudentDashboardStats);
+router.get("/stats", getStudentDashboardStats);
 
 router.post("/", protect, createStudent);
 router.delete("/:id", protect, deleteStudent);
