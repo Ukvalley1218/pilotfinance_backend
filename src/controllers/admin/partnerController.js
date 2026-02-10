@@ -230,3 +230,53 @@ export const downloadPartnerReportPDF = async (req, res) => {
     });
   }
 };
+
+
+
+/**
+ * @desc Admin verifies or rejects Partner KYC
+ * @route PUT /api/partner/partners/:id/verify-kyc
+ */
+export const verifyPartnerKYC = async (req, res) => {
+  try {
+    const { status, reason } = req.body; // status = "Verified" or "Rejected"
+
+    if (!["Verified", "Rejected"].includes(status)) {
+      return res.status(400).json({ message: "Invalid KYC status" });
+    }
+
+    const partner = await User.findOne({
+      _id: req.params.id,
+      role: "Partner",
+    });
+
+    if (!partner) {
+      return res.status(404).json({ message: "Partner not found" });
+    }
+
+    // Update KYC status
+    partner.kycStatus = status;
+
+    // Optional: Store rejection reason inside kycData
+    if (status === "Rejected") {
+      partner.kycData.rejectionReason = reason || "KYC rejected by admin";
+    } else {
+      partner.kycData.rejectionReason = undefined;
+    }
+
+    await partner.save();
+
+    res.json({
+      success: true,
+      message: `Partner KYC ${status}`,
+      data: {
+        partnerId: partner._id,
+        name: partner.fullName,
+        kycStatus: partner.kycStatus,
+      },
+    });
+  } catch (err) {
+    console.error("Partner KYC Verify Error:", err);
+    res.status(500).json({ message: "KYC verification failed" });
+  }
+};

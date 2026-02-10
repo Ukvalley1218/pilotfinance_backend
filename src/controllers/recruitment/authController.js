@@ -322,10 +322,7 @@ export const updateMe = async (req, res) => {
       { $set: updateFields },
       { new: true },
     ).select("-password");
-    await Partner.findOneAndUpdate(
-      { email: updatedUser.email },
-      { name: fullName, phone, businessName: companyName },
-    );
+    
     res.status(200).json({ success: true, user: updatedUser });
   } catch (err) {
     res.status(500).json({ msg: "Update failed" });
