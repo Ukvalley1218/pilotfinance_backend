@@ -713,3 +713,64 @@ export const getLoanWithStudentById = async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 };
+
+
+// api for reject loan
+// --- 18. PARTNER REJECT LOAN ---
+export const rejectStudentLoan = async (req, res) => {
+  try {
+    const { loanId, reason } = req.body;
+    const partnerId = req.user.id;
+
+    if (!loanId) {
+      return res.status(400).json({ success: false, msg: "Loan ID required" });
+    }
+
+    // Find loan and student
+    const loan = await Loan.findById(loanId).populate("studentId");
+    if (!loan) {
+      return res.status(404).json({ success: false, msg: "Loan not found" });
+    }
+
+    // SECURITY: Ensure this student belongs to this partner
+    const student = await Student.findOne({
+      _id: loan.studentId._id,
+      referredBy: partnerId,
+    });
+
+    if (!student) {
+      return res.status(403).json({ success: false, msg: "Access denied" });
+    }
+
+    // Prevent rejecting after disbursement
+    if (["Disbursed", "Active", "Completed"].includes(loan.status)) {
+      return res.status(400).json({
+        success: false,
+        msg: "Loan already disbursed/active. Cannot reject.",
+      });
+    }
+
+    // Update loan
+    loan.status = "Rejected";
+    loan.rejectionReason = reason || "Rejected by partner";
+    loan.rejectedAt = new Date();
+
+    await loan.save();
+
+    await logPartnerActivity(
+      partnerId,
+      "Loan Rejected",
+      `Rejected loan for ${student.name}`,
+      "Finance"
+    );
+
+    return res.status(200).json({
+      success: true,
+      msg: "Loan rejected successfully",
+      data: loan,
+    });
+  } catch (err) {
+    console.error("Reject Loan Error:", err);
+    return res.status(500).json({ success: false, msg: "Server error" });
+  }
+};

@@ -26,6 +26,7 @@ import {
   deleteStudentByPartner,
  
   getLoanWithStudentById,
+  rejectStudentLoan,
 } from "../../controllers/recruitment/authController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
 
@@ -120,6 +121,8 @@ router.delete("/delete-user/:studentId",protect,deleteStudentByPartner)
 // 5. Loan Ledger & Funding
 router.get("/loans", protect, getPartnerLoans);
 router.post("/fund-loan", protect, fundStudentLoan);
+router.post("/reject-loan", protect, rejectStudentLoan);
+
 
 // 6. Wallet & Transactions
 router.get("/wallet", protect, getWalletData);
