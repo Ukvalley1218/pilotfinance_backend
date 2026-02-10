@@ -75,7 +75,6 @@ router.post("/login", login);
 
 // 1. Profile & Account Management
 router.get("/me", protect, getMe);
-router.get("/:id", protect, getLoanWithStudentById);
 router.put("/update-me", protect, upload.single("avatar"), updateMe);
 
 
@@ -125,4 +124,5 @@ router.post("/fund-loan", protect, fundStudentLoan);
 // 6. Wallet & Transactions
 router.get("/wallet", protect, getWalletData);
 
+router.get("/:id", protect, getLoanWithStudentById);
 export default router;
