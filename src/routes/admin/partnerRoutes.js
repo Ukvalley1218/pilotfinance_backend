@@ -17,7 +17,7 @@ router.get("/", getAllPartners);
 router.post("/", createPartner);
 router.get("/:id", getPartnerById);
 router.put("/:id", updatePartner);
-router.put("/:id", verifyPartnerKYC);
+router.put("/verify/:id", verifyPartnerKYC);
 router.delete("/:id", deletePartner);
 
 export default router;
