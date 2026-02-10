@@ -47,6 +47,7 @@ const userSchema = new mongoose.Schema(
     address: { type: String },
     education: { type: String },
     gender: { type: String },
+    status:{type:String,enum:["Active","Inactive"],default:"Active"},
     maritalStatus: { type: String },
     avatar: { type: String, default: "" },
 

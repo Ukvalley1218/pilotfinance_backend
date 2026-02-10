@@ -6,6 +6,7 @@ export const getAdminDashboardStats = async (req, res) => {
   try {
     const [
       activePartners,
+      inactivePartners,
       pendingPartners,
       totalStudents,
       studentsPendingKyc,
@@ -14,6 +15,7 @@ export const getAdminDashboardStats = async (req, res) => {
       disbursedAmount,
     ] = await Promise.all([
       User.countDocuments({ role: "Partner", status: "Active" }),
+      User.countDocuments({ role: "Partner", status: "Inactive" }),
       User.countDocuments({ role: "Partner", kycStatus: "Pending" }),
       Student.countDocuments(),
       Student.countDocuments({ kycStatus: "Pending" }),
@@ -31,6 +33,7 @@ export const getAdminDashboardStats = async (req, res) => {
         partners: {
           active: activePartners,
           pendingKyc: pendingPartners,
+          inactive: inactivePartners,
         },
         students: {
           total: totalStudents,
