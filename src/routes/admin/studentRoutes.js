@@ -11,7 +11,7 @@ import {
 } from "../../controllers/admin/studentController.js";
 
 const router = express.Router();
-router.use(protect, adminOnly); // Apply to all routes in this router
+
 /**
  * PREFIX: /api/admin/student
  */
@@ -30,6 +30,7 @@ router.delete("/maintenance/clear-data", protect, async (req, res) => {
 });
 
 
+router.get("/stats", getStudentDashboardStats);
 
 router.get("/", protect, getAllStudents);
 
@@ -41,7 +42,6 @@ router.get("/:id", protect, getStudentById);
 router.put("/:id", protect, updateStudent);
 
 
-router.get("/stats", getStudentDashboardStats);
 
 router.post("/", protect, createStudent);
 router.delete("/:id", protect, deleteStudent);
