@@ -535,22 +535,22 @@ if (!student) return res.status(403).json({ msg: "Access Denied" });
 
     await loan.save();
 
-    await Transaction.create({
-  id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
-  studentId: student._id,
-  type: "Credit",
-  desc: `${loan.category} Loan Disbursed`,
-  amount: P,
-  status: "Completed",
-});
+//     await Transaction.create({
+//   id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
+//   studentId: student._id,
+//   type: "Credit",
+//   desc: `${loan.category} Loan Disbursed`,
+//   amount: P,
+//   status: "Completed",
+// });
 
 
-    await logPartnerActivity(
-      partnerId,
-      "Loan Funded",
-      `Disbursed ${P} CAD`,
-      "Finance",
-    );
+    // await logPartnerActivity(
+    //   partnerId,
+    //   "Loan Funded",
+    //   `Disbursed ${P} CAD`,
+    //   "Finance",
+    // );
     return res
       .status(200)
       .json({ success: true, msg: "Loan funded!", data: loan });
