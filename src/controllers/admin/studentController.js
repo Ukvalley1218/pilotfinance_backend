@@ -190,7 +190,7 @@ export const getStudentDashboardStats = async (req, res) => {
   try {
     const totalStudents = await Student.countDocuments();
 
-    const verifiedKYC = await Student.countDocuments({ kycStatus: "Verified" });
+    const verifiedKYC = await Student.countDocuments({ kycStatus: "Approved" });
 
     const rejectedKYC = await Student.countDocuments({ kycStatus: "Rejected" });
 
