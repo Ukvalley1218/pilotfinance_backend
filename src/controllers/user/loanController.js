@@ -127,28 +127,37 @@ export const repayLoan = async (req, res) => {
     const { loanId, amount } = req.body;
     const paymentAmount = Number(amount);
 
+    if (!paymentAmount || paymentAmount <= 0) {
+      return res.status(400).json({ msg: "Invalid payment amount" });
+    }
+
     const loan = await Loan.findOne({
       _id: loanId,
       studentId: req.user.id,
-    });
+    }).populate("studentId");
 
     if (!loan) return res.status(404).json({ msg: "Loan not found" });
 
+    // Update loan balances
     loan.paidAmount += paymentAmount;
     loan.totalAmount = Math.max(0, loan.totalWithInterest - loan.paidAmount);
 
     if (loan.totalAmount <= 0) {
       loan.status = "Completed";
+      await Student.findByIdAndUpdate(req.user.id, { loanStatus: "Completed" });
     }
 
     await loan.save();
 
+    // 🔥 CREATE TRANSACTION (REPAYMENT DEBIT)
     await Transaction.create({
       id: `TXN-PAY-${Math.floor(100000 + Math.random() * 900000)}`,
-      studentId: req.user.id,
+      userId: loan.studentId.userId || loan.studentId._id, // wallet owner
+      studentId: loan.studentId._id,
       type: "Debit",
-      amount: paymentAmount,
       desc: `Repayment for ${loan.category} Loan`,
+      subDesc: `Loan Ref: ${loan._id}`,
+      amount: paymentAmount,
       status: "Completed",
     });
 
@@ -157,8 +166,9 @@ export const repayLoan = async (req, res) => {
       remainingBalance: loan.totalAmount,
     });
   } catch (err) {
-    console.error(err);
+    console.error("Repayment Error:", err);
     res.status(500).json({ msg: "Repayment failed" });
   }
 };
+
 
