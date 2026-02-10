@@ -84,6 +84,10 @@ const loanSchema = new mongoose.Schema(
     disbursementDate: {
       type: Date,
     },
+    rejectionReason:{
+      type:String
+    },
+    rejectedAt:{type:Date},
 
     // --- PAYMENT DETAILS ---
     cardUsed: {
