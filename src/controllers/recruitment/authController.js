@@ -535,22 +535,15 @@ if (!student) return res.status(403).json({ msg: "Access Denied" });
 
     await loan.save();
 
-//     await Transaction.create({
-//   id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
-//   studentId: student._id,
-//   type: "Credit",
-//   desc: `${loan.category} Loan Disbursed`,
-//   amount: P,
-//   status: "Completed",
-// });
+   
 
 
-    // await logPartnerActivity(
-    //   partnerId,
-    //   "Loan Funded",
-    //   `Disbursed ${P} CAD`,
-    //   "Finance",
-    // );
+    await logPartnerActivity(
+      partnerId,
+      "Loan Funded",
+      `Disbursed ${P} CAD`,
+      "Student",
+    );
     return res
       .status(200)
       .json({ success: true, msg: "Loan funded!", data: loan });
@@ -558,7 +551,14 @@ if (!student) return res.status(403).json({ msg: "Access Denied" });
     res.status(500).json({ success: false });
   }
 };
-
+ await Transaction.create({
+  id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
+  studentId: student._id,
+  type: "Credit",
+  desc: `${loan.category} Loan Disbursed`,
+  amount: P,
+  status: "Completed",
+});
 // --- 17. VERIFY STUDENT (PERMANENT STATUS UPDATE) ---
 export const verifyStudent = async (req, res) => {
   try {
@@ -714,8 +714,6 @@ export const getLoanWithStudentById = async (req, res) => {
   }
 };
 
-
-// api for reject loan
 // --- 18. PARTNER REJECT LOAN ---
 export const rejectStudentLoan = async (req, res) => {
   try {
@@ -761,7 +759,7 @@ export const rejectStudentLoan = async (req, res) => {
       partnerId,
       "Loan Rejected",
       `Rejected loan for ${student.name}`,
-      "Student"
+      "Finance"
     );
 
     return res.status(200).json({
