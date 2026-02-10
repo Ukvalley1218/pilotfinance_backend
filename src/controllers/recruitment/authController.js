@@ -536,7 +536,14 @@ if (!student) return res.status(403).json({ msg: "Access Denied" });
     await loan.save();
 
    
-
+ await Transaction.create({
+  id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
+  studentId: student._id,
+  type: "Credit",
+  desc: `${loan.category} Loan Disbursed`,
+  amount: P,
+  status: "Completed",
+});
 
     await logPartnerActivity(
       partnerId,
@@ -551,14 +558,7 @@ if (!student) return res.status(403).json({ msg: "Access Denied" });
     res.status(500).json({ success: false });
   }
 };
- await Transaction.create({
-  id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
-  studentId: student._id,
-  type: "Credit",
-  desc: `${loan.category} Loan Disbursed`,
-  amount: P,
-  status: "Completed",
-});
+
 // --- 17. VERIFY STUDENT (PERMANENT STATUS UPDATE) ---
 export const verifyStudent = async (req, res) => {
   try {
