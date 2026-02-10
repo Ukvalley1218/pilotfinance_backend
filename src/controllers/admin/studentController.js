@@ -180,3 +180,40 @@ await Transaction.deleteMany({ studentId: student._id });
       .json({ success: false, message: "Operation failed" });
   }
 };
+
+
+/**
+ * @desc Admin Dashboard Student Stats
+ * @route GET /api/admin/students/stats
+ */
+export const getStudentDashboardStats = async (req, res) => {
+  try {
+    const totalStudents = await Student.countDocuments();
+
+    const verifiedKYC = await Student.countDocuments({ kycStatus: "Verified" });
+
+    const rejectedKYC = await Student.countDocuments({ kycStatus: "Rejected" });
+
+    const pendingKYC = await Student.countDocuments({
+      kycStatus: { $in: ["Pending", "Partially Verified"] },
+    });
+
+    const notSubmittedKYC = await Student.countDocuments({
+      kycStatus: "Not Submitted",
+    });
+
+    res.json({
+      success: true,
+      stats: {
+        totalStudents,
+        verifiedKYC,
+        rejectedKYC,
+        pendingKYC,
+        notSubmittedKYC,
+      },
+    });
+  } catch (err) {
+    console.error("Dashboard Stats Error:", err);
+    res.status(500).json({ message: "Failed to load dashboard stats" });
+  }
+};
