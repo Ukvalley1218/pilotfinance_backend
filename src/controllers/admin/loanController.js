@@ -1,6 +1,7 @@
 import { Student } from "../../models/student.model.js";
 import Loan from "../../models/loan.js";
 import mongoose from "mongoose";
+import Transaction from "../../models/transaction.model.js";
 
 /**
  * @desc Create Loan (Triggered from Partner/User Panel)
@@ -50,29 +51,48 @@ export const createLoan = async (req, res) => {
  */
 export const updateLoan = async (req, res) => {
   try {
-    const loan = await Loan.findById(req.params.id);
+    const loan = await Loan.findById(req.params.id).populate("studentId");
     if (!loan) return res.status(404).json({ message: "Loan not found" });
 
     const { status } = req.body;
 
-    // 🔹 When Admin approves
-    if (status === "Approved") {
+    // ------------------ APPROVED ------------------
+    if (status === "Approved" && loan.status !== "Approved") {
       loan.status = "Approved";
-      await Student.findByIdAndUpdate(loan.studentId, { loanStatus: "Approved" });
+      await Student.findByIdAndUpdate(loan.studentId._id, {
+        loanStatus: "Approved",
+      });
     }
 
-    // 🔹 When Admin disburses
-    if (status === "Disbursed") {
+    // ------------------ DISBURSED ------------------
+    if (status === "Disbursed" && loan.status !== "Disbursed") {
       loan.status = "Disbursed";
       loan.disbursementDate = new Date();
 
-      await Student.findByIdAndUpdate(loan.studentId, { loanStatus: "Active" });
+      const student = loan.studentId;
+      const amount = loan.principalRequested;
+
+      await Student.findByIdAndUpdate(student._id, { loanStatus: "Active" });
+
+      // ✅ CREATE TRANSACTION (LOAN CREDIT)
+      await Transaction.create({
+        id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
+        userId: student.userId || student._id, // depends on your schema
+        studentId: student._id,
+        type: "Credit",
+        desc: `${loan.category} Loan Disbursed`,
+        subDesc: `Loan Ref: ${loan._id}`,
+        amount: amount,
+        status: "Completed",
+      });
     }
 
-    // 🔹 When Admin rejects
-    if (status === "Rejected") {
+    // ------------------ REJECTED ------------------
+    if (status === "Rejected" && loan.status !== "Rejected") {
       loan.status = "Rejected";
-      await Student.findByIdAndUpdate(loan.studentId, { loanStatus: "Rejected" });
+      await Student.findByIdAndUpdate(loan.studentId._id, {
+        loanStatus: "Rejected",
+      });
     }
 
     Object.assign(loan, req.body);
@@ -80,9 +100,11 @@ export const updateLoan = async (req, res) => {
 
     res.json({ success: true, data: loan });
   } catch (err) {
+    console.error("Loan Update Error:", err);
     res.status(500).json({ message: "Update failed" });
   }
 };
+
 
 
 /**
