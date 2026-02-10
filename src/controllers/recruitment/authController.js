@@ -761,7 +761,7 @@ export const rejectStudentLoan = async (req, res) => {
       partnerId,
       "Loan Rejected",
       `Rejected loan for ${student.name}`,
-      "Finance"
+      "Student"
     );
 
     return res.status(200).json({
