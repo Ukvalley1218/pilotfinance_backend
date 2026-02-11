@@ -27,7 +27,7 @@ export const generateReportData = async (filters) => {
     query.partnerId = new mongoose.Types.ObjectId(partner);
 
   const loans = await Loan.find(query)
-    .populate("userId", "fullName email")
+    .populate("studentId", "fullName email")
     .populate("partnerId", "name");
 
   // 📊 STATS
