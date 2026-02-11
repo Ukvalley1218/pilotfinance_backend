@@ -88,9 +88,8 @@ export const updatePartnerProfile = async (req, res) => {
     } = req.body;
 
     const files = req.files || {};
-   const getFilePath = (fieldName) =>
-  files[fieldName] ? files[fieldName][0].path : undefined;
-
+    const getFilePath = (fieldName) =>
+      files[fieldName] ? files[fieldName][0].path : undefined;
 
     const updateData = {
       companyName: agencyName,
@@ -169,10 +168,11 @@ export const updatePartnerProfile = async (req, res) => {
 // --- 4. GET UNLINKED STUDENTS ---
 export const getAvailableStudents = async (req, res) => {
   try {
-   const availableStudents = await Student.find({
-  referredBy: { $exists: false },
-}).select("name email phone course uni requestedAmount status kycStatus country");
-
+    const availableStudents = await Student.find({
+      referredBy: { $exists: false },
+    }).select(
+      "name email phone course uni requestedAmount status kycStatus country",
+    );
 
     res.status(200).json({ success: true, data: availableStudents });
   } catch (err) {
@@ -192,9 +192,8 @@ export const linkStudentToPartner = async (req, res) => {
       { referredBy: partnerId },
       { new: true },
     );
-   if (student.referredBy)
-  return res.status(400).json({ msg: "Student already linked" });
-
+    if (student.referredBy)
+      return res.status(400).json({ msg: "Student already linked" });
 
     await User.findByIdAndUpdate(partnerId, {
       $addToSet: { referredStudents: student._id },
@@ -211,7 +210,6 @@ export const linkStudentToPartner = async (req, res) => {
   }
 };
 
-
 // --- 6. GET PARTNER SPECIFIC LOAN LEDGER (STRICT ISOLATION) ---
 export const getPartnerLoans = async (req, res) => {
   try {
@@ -227,12 +225,13 @@ export const getPartnerLoans = async (req, res) => {
       query = { studentId: studentId };
     } else {
       const partnerId = req.user.id;
-   
-  const partnerStudents = await Student.find({ referredBy: partnerId }).select("_id");
-const studentIds = partnerStudents.map(s => s._id);
 
-query = { studentId: { $in: studentIds } };
+      const partnerStudents = await Student.find({
+        referredBy: partnerId,
+      }).select("_id");
+      const studentIds = partnerStudents.map((s) => s._id);
 
+      query = { studentId: { $in: studentIds } };
     }
 
     const myLoans = await Loan.find(query)
@@ -250,19 +249,23 @@ export const getReferredStudents = async (req, res) => {
     const partnerId = req.user.id;
     const students = await Student.find({ referredBy: partnerId });
 
-const loans = await Loan.find({ studentId: { $in: students.map(s => s._id) } });
+    const loans = await Loan.find({
+      studentId: { $in: students.map((s) => s._id) },
+    });
 
-const mergedData = students.map(student => {
-  const activeLoan = loans.find(l => String(l.studentId) === String(student._id));
-  return {
-    ...student._doc,
-    requestedAmount: activeLoan?.principalRequested || student.requestedAmount,
-    status: activeLoan?.status || student.status,
-    loan: activeLoan ? "Yes" : "No",
-    Interest:activeLoan?.interestRate 
-  };
-});
-
+    const mergedData = students.map((student) => {
+      const activeLoan = loans.find(
+        (l) => String(l.studentId) === String(student._id),
+      );
+      return {
+        ...student._doc,
+        requestedAmount:
+          activeLoan?.principalRequested || student.requestedAmount,
+        status: activeLoan?.status || student.status,
+        loan: activeLoan ? "Yes" : "No",
+        Interest: activeLoan?.interestRate,
+      };
+    });
 
     return res.status(200).json({ success: true, students: mergedData });
   } catch (err) {
@@ -275,12 +278,11 @@ export const getDashboardStats = async (req, res) => {
   try {
     const partnerId = req.user.id;
     const students = await Student.find({ referredBy: partnerId });
- 
-const studentIds = students.map(s => s._id);
-const referredLoans = await Loan.find({ studentId: { $in: studentIds } })
-  .sort({ createdAt: -1 })
-  .populate("studentId", "name");
 
+    const studentIds = students.map((s) => s._id);
+    const referredLoans = await Loan.find({ studentId: { $in: studentIds } })
+      .sort({ createdAt: -1 })
+      .populate("studentId", "name");
 
     return res.status(200).json({
       success: true,
@@ -315,14 +317,14 @@ export const updateMe = async (req, res) => {
       address,
       businessType,
     };
-   if (req.file) updateFields.avatar = req.file.path;
+    if (req.file) updateFields.avatar = req.file.path;
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
       { $set: updateFields },
       { new: true },
     ).select("-password");
-    
+
     res.status(200).json({ success: true, user: updatedUser });
   } catch (err) {
     res.status(500).json({ msg: "Update failed" });
@@ -430,7 +432,9 @@ export const login = async (req, res) => {
 
     // 3️⃣ Check role (must be Partner)
     if (user.role !== "Partner") {
-      return res.status(403).json({ msg: "Access denied. Not a partner account." });
+      return res
+        .status(403)
+        .json({ msg: "Access denied. Not a partner account." });
     }
 
     // 4️⃣ Compare password
@@ -440,12 +444,7 @@ export const login = async (req, res) => {
     }
 
     // 5️⃣ Log activity
-    await logPartnerActivity(
-      user._id,
-      "Login",
-      "Partner logged in",
-      "System"
-    );
+    await logPartnerActivity(user._id, "Login", "Partner logged in", "System");
 
     // 6️⃣ Generate token
     const token = generateToken(user._id);
@@ -467,7 +466,6 @@ export const login = async (req, res) => {
   }
 };
 
-
 export const getStudentSignaturesForPartner = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -480,8 +478,8 @@ export const getStudentSignaturesForPartner = async (req, res) => {
 
     if (!student) return res.status(403).json({ success: false });
 
-    const signedDocs = student.documents.filter(d =>
-      ["Uploaded", "Signed"].includes(d.status)
+    const signedDocs = student.documents.filter((d) =>
+      ["Uploaded", "Signed"].includes(d.status),
     );
 
     res.status(200).json({ success: true, data: signedDocs });
@@ -489,7 +487,6 @@ export const getStudentSignaturesForPartner = async (req, res) => {
     res.status(500).json({ success: false });
   }
 };
-
 
 // --- 16. PARTNER FUND/LEND LOAN (FUNDING ANCHOR FIXED) ---
 export const fundStudentLoan = async (req, res) => {
@@ -500,15 +497,14 @@ export const fundStudentLoan = async (req, res) => {
     if (!loanId)
       return res.status(400).json({ success: false, msg: "Loan ID required" });
 
-   const loan = await Loan.findOne({ _id: loanId }).populate("studentId");
+    const loan = await Loan.findOne({ _id: loanId }).populate("studentId");
 
-const student = await Student.findOne({
-  _id: loan.studentId,
-  referredBy: partnerId,
-});
+    const student = await Student.findOne({
+      _id: loan.studentId,
+      referredBy: partnerId,
+    });
 
-if (!student) return res.status(403).json({ msg: "Access Denied" });
-
+    if (!student) return res.status(403).json({ msg: "Access Denied" });
 
     if (["Disbursed", "Active", "Completed"].includes(loan.status)) {
       return res.status(400).json({ success: false, msg: "Already funded." });
@@ -532,15 +528,14 @@ if (!student) return res.status(403).json({ msg: "Access Denied" });
 
     await loan.save();
 
-   
- await Transaction.create({
-  id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
-  studentId: student._id,
-  type: "Credit",
-  desc: `${loan.category} Loan Disbursed`,
-  amount: P,
-  status: "Completed",
-});
+    await Transaction.create({
+      id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
+      studentId: student._id,
+      type: "Credit",
+      desc: `${loan.category} Loan Disbursed`,
+      amount: P,
+      status: "Completed",
+    });
 
     await logPartnerActivity(
       partnerId,
@@ -552,7 +547,7 @@ if (!student) return res.status(403).json({ msg: "Access Denied" });
       .status(200)
       .json({ success: true, msg: "Loan funded!", data: loan });
   } catch (err) {
-    res.status(500).json({ success: false });
+    res.status(500).json({ success: false, msg: err.msg });
   }
 };
 
@@ -575,8 +570,6 @@ export const verifyStudent = async (req, res) => {
 
     if (!updatedStudent) return res.status(404).json({ success: false });
 
-    
-
     await logPartnerActivity(
       req.user.id,
       "Verification Complete",
@@ -589,21 +582,24 @@ export const verifyStudent = async (req, res) => {
   }
 };
 
-
 export const addStudentByPartner = async (req, res) => {
   try {
     const partnerId = req.user.id;
     const { name, email, phone, password, address } = req.body;
 
     if (!name || !email || !phone || !password) {
-      return res.status(400).json({ success: false, msg: "Missing required fields" });
+      return res
+        .status(400)
+        .json({ success: false, msg: "Missing required fields" });
     }
 
     const cleanEmail = email.toLowerCase().trim();
 
     const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
-      return res.status(400).json({ success: false, msg: "Email already registered" });
+      return res
+        .status(400)
+        .json({ success: false, msg: "Email already registered" });
     }
 
     // ✅ DO NOT HASH HERE — schema will hash automatically
@@ -626,7 +622,7 @@ export const addStudentByPartner = async (req, res) => {
       partnerId,
       "Student Added",
       `Added ${name}`,
-      "Student"
+      "Student",
     );
 
     res.status(201).json({ success: true, student });
@@ -666,16 +662,17 @@ export const deleteStudentByPartner = async (req, res) => {
       partnerId,
       "Student Deleted",
       `Deleted ${student.name}`,
-      "Student"
+      "Student",
     );
 
-    res.status(200).json({ success: true, msg: "Student deleted successfully" });
+    res
+      .status(200)
+      .json({ success: true, msg: "Student deleted successfully" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, msg: "Delete failed" });
   }
 };
-
 
 export const getLoanWithStudentById = async (req, res) => {
   try {
@@ -756,7 +753,7 @@ export const rejectStudentLoan = async (req, res) => {
       partnerId,
       "Loan Rejected",
       `Rejected loan for ${student.name}`,
-      "Finance"
+      "Finance",
     );
 
     return res.status(200).json({
