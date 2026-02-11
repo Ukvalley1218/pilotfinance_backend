@@ -55,7 +55,7 @@ const userSchema = new mongoose.Schema(
     companyName: { type: String },
     businessType: { type: String },
     website: { type: String },
-    commissionRate: { type: Number, default: 0 },
+    commissionRate: { type: Number, default: 1.2 },
 
     referredStudents: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Student" },

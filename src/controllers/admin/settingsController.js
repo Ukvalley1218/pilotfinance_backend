@@ -7,6 +7,7 @@ const LoanSettingSchema = new mongoose.Schema({
   interestRate: { type: Number, default: 2.5 },
   minAmount: { type: Number, default: 500 },
   maxAmount: { type: Number, default: 50000 },
+  commisionRateForpartner:{type:Number,default:1.5}
 });
 
 const LoanSetting = mongoose.model("LoanSetting", LoanSettingSchema);

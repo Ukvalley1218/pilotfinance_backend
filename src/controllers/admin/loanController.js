@@ -2,6 +2,7 @@ import { Student } from "../../models/student.model.js";
 import Loan from "../../models/loan.js";
 import mongoose from "mongoose";
 import Transaction from "../../models/transaction.model.js";
+import User from "../../models/User.js";
 
 /**
  * @desc Create Loan (Triggered from Partner/User Panel)
@@ -9,7 +10,8 @@ import Transaction from "../../models/transaction.model.js";
  */
 export const createLoan = async (req, res) => {
   try {
-    const { studentId, category, principalRequested, period, interestRate } = req.body;
+    const { studentId, category, principalRequested, period, interestRate } =
+      req.body;
 
     const student = await Student.findById(studentId);
     if (!student) return res.status(404).json({ message: "Student not found" });
@@ -18,8 +20,7 @@ export const createLoan = async (req, res) => {
     const r = (interestRate || 2.5) / 100;
 
     const emi = Math.round(
-      (principalRequested * r * Math.pow(1 + r, n)) /
-      (Math.pow(1 + r, n) - 1)
+      (principalRequested * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1),
     );
 
     const totalWithInterest = emi * n;
@@ -59,20 +60,55 @@ export const updateLoan = async (req, res) => {
     // ------------------ APPROVED ------------------
     if (status === "Approved" && loan.status !== "Approved") {
       loan.status = "Approved";
-      await Student.findByIdAndUpdate(loan.studentId._id, {
+
+      const student = await Student.findById(loan.studentId);
+
+      // Update student loan lifecycle
+      await Student.findByIdAndUpdate(loan.studentId, {
         loanStatus: "Approved",
       });
+
+      // ------------------ PARTNER COMMISSION ------------------
+      if (student?.referredBy) {
+        const partner = await User.findById(student.referredBy);
+
+        if (partner && partner.commissionRate > 0) {
+          const commissionAmount =
+            (loan.principalRequested * partner.commissionRate) / 100;
+
+          await Transaction.create({
+            id: `TXN-COMM-${Math.floor(100000 + Math.random() * 900000)}`,
+            userId: partner._id, // Wallet owner = Partner
+            studentId: student._id,
+            type: "Credit",
+            desc: `Commission for ${loan.category} Loan`,
+            subDesc: `Loan Ref: ${loan.loanId}`,
+            amount: commissionAmount,
+            status: "Completed",
+          });
+
+          console.log(
+            `💰 Commission ${commissionAmount} credited to partner ${partner.fullName}`,
+          );
+        }
+      }
     }
 
     // ------------------ DISBURSED ------------------
-    if (status === "Disbursed" && loan.status !== "Disbursed") {
-      loan.status = "Disbursed";
-      loan.disbursementDate = new Date();
+   if (status === "Disbursed" && loan.status !== "Disbursed") {
+  loan.status = "Disbursed";
+  loan.disbursementDate = new Date();
 
-      const student = loan.studentId;
-      const amount = loan.principalRequested;
+  const student = loan.studentId;
+  const amount = loan.principalRequested;
 
-      await Student.findByIdAndUpdate(student._id, { loanStatus: "Active" });
+  // 🔥 UPDATE STUDENT LOAN FLAGS
+  await Student.findByIdAndUpdate(student._id, {
+    loanStatus: "Active",
+    loan: "Yes",              // <-- THIS IS THE NEW LINE
+    requestedAmount: amount,  // optional but useful for UI
+  });
+
 
       // ✅ CREATE TRANSACTION (LOAN CREDIT)
       await Transaction.create({
@@ -105,8 +141,6 @@ export const updateLoan = async (req, res) => {
   }
 };
 
-
-
 /**
  * @desc Get All Loans (Dynamic sync for Admin Dashboard)
  */
@@ -128,7 +162,6 @@ export const getAllLoans = async (req, res) => {
   }
 };
 
-
 /**
  * @desc Get Single Loan by ID
  */
@@ -146,7 +179,6 @@ export const getLoanById = async (req, res) => {
   }
 };
 
-
 /**
  * @desc Delete Loan
  */
@@ -155,11 +187,12 @@ export const deleteLoan = async (req, res) => {
     const loan = await Loan.findByIdAndDelete(req.params.id);
     if (!loan) return res.status(404).json({ message: "Loan not found" });
 
-    await Student.findByIdAndUpdate(loan.studentId, { loanStatus: "Not Applied" });
+    await Student.findByIdAndUpdate(loan.studentId, {
+      loanStatus: "Not Applied",
+    });
 
     res.json({ success: true, message: "Loan deleted" });
   } catch {
     res.status(500).json({ message: "Delete failed" });
   }
 };
-
