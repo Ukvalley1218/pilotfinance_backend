@@ -8,10 +8,10 @@ import { Notification } from "../../models/notification.model.js";
  */
 export const createStudent = async (req, res) => {
   try {
-    const { name, email, phone, country } = req.body;
+    const { name, email, phone, country, password } = req.body;
 
-    if (!name || !email || !phone) {
-      return res.status(400).json({ message: "Name, email, phone required" });
+    if (!name || !email || !phone || !password) {
+      return res.status(400).json({ message: "Name, email, phone, password required" });
     }
 
     const cleanEmail = email.toLowerCase().trim();
@@ -24,6 +24,7 @@ export const createStudent = async (req, res) => {
       email: cleanEmail,
       phone,
       country,
+      password,
       kycStatus: "Not Submitted",
       loanStatus: "Not Applied",
       createdBy: req.user._id,
