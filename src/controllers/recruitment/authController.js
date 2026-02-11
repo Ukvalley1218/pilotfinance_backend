@@ -528,14 +528,14 @@ export const fundStudentLoan = async (req, res) => {
 
     await loan.save();
 
-    await Transaction.create({
-      id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
-      studentId: student._id,
-      type: "Credit",
-      desc: `${loan.category} Loan Disbursed`,
-      amount: P,
-      status: "Completed",
-    });
+    // await Transaction.create({
+    //   id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
+    //   studentId: student._id,
+    //   type: "Credit",
+    //   desc: `${loan.category} Loan Disbursed`,
+    //   amount: P,
+    //   status: "Completed",
+    // });
 
     await logPartnerActivity(
       partnerId,
