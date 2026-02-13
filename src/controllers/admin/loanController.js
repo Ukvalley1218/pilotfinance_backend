@@ -50,35 +50,154 @@ export const createLoan = async (req, res) => {
 /**
  * @desc Update Loan (Used by Admin for Approvals/Verification)
  */
+// export const updateLoan = async (req, res) => {
+//   try {
+//     const loan = await Loan.findById(req.params.id).populate("studentId");
+//     if (!loan) return res.status(404).json({ message: "Loan not found" });
+
+//     const { status } = req.body;
+
+//     // ------------------ APPROVED ------------------
+//     if (status === "Approved" && loan.status !== "Approved") {
+//       loan.status = "Approved";
+
+//       const student = await Student.findById(loan.studentId);
+
+//       // Update student loan lifecycle
+//       await Student.findByIdAndUpdate(loan.studentId, {
+//         loanStatus: "Approved",
+//       });
+
+//       // ------------------ PARTNER COMMISSION ------------------
+//       if (student?.referredBy) {
+//         const partner = await User.findById(student.referredBy);
+
+//         if (partner && partner.commissionRate > 0) {
+//           const commissionAmount =
+//             (loan.principalRequested * partner.commissionRate) / 100;
+
+//           await Transaction.create({
+//             id: `TXN-COMM-${Math.floor(100000 + Math.random() * 900000)}`,
+//             userId: partner._id, // Wallet owner = Partner
+//             studentId: student._id,
+//             type: "Credit",
+//             desc: `Commission for ${loan.category} Loan`,
+//             subDesc: `Loan Ref: ${loan.loanId}`,
+//             amount: commissionAmount,
+//             status: "Completed",
+//           });
+
+//           console.log(
+//             `💰 Commission ${commissionAmount} credited to partner ${partner.fullName}`,
+//           );
+//         }else{
+//           console.log(`No commission for partner ${partner?.fullName || "Unknown"}`);
+//         }
+//       }
+//     }
+
+//     // ------------------ DISBURSED ------------------
+//     if (status === "Disbursed" && loan.status !== "Disbursed") {
+//       loan.status = "Disbursed";
+//       loan.disbursementDate = new Date();
+
+//       const student = loan.studentId;
+//       const amount = loan.principalRequested;
+
+//       // 🔥 UPDATE STUDENT LOAN FLAGS
+//       await Student.findByIdAndUpdate(student._id, {
+//         loanStatus: "Active",
+//         loan: "Yes", // <-- THIS IS THE NEW LINE
+//         requestedAmount: amount, // optional but useful for UI
+//       });
+
+//       // ✅ CREATE TRANSACTION (LOAN CREDIT)
+//       await Transaction.create({
+//         id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
+//         userId: student.userId || student._id, // depends on your schema
+//         studentId: student._id,
+//         type: "Credit",
+//         desc: `${loan.category} Loan Disbursed`,
+//         subDesc: `Loan Ref: ${loan._id}`,
+//         amount: amount,
+//         status: "Completed",
+//       });
+//     }
+
+//     // ------------------ REJECTED ------------------
+//     if (status === "Rejected" && loan.status !== "Rejected") {
+//       loan.status = "Rejected";
+//       await Student.findByIdAndUpdate(loan.studentId._id, {
+//         loanStatus: "Rejected",
+//       });
+//     }
+
+//     Object.assign(loan, req.body);
+//     await loan.save();
+
+//     res.json({ success: true, data: loan });
+//   } catch (err) {
+//     console.error("Loan Update Error:", err);
+//     res.status(500).json({ message: "Update failed" });
+//   }
+// };
+
 export const updateLoan = async (req, res) => {
   try {
+    console.log("==================================================");
+    console.log("📌 Loan Update API Called");
+    console.log("Loan ID:", req.params.id);
+    console.log("Incoming Body:", req.body);
+
     const loan = await Loan.findById(req.params.id).populate("studentId");
-    if (!loan) return res.status(404).json({ message: "Loan not found" });
+
+    if (!loan) {
+      console.log("❌ Loan not found");
+      return res.status(404).json({ message: "Loan not found" });
+    }
+
+    console.log("🔎 Existing Loan Status:", loan.status);
 
     const { status } = req.body;
 
-    // ------------------ APPROVED ------------------
+    // ================== APPROVED ==================
     if (status === "Approved" && loan.status !== "Approved") {
+      console.log("➡️ Changing status to APPROVED");
+
       loan.status = "Approved";
 
       const student = await Student.findById(loan.studentId);
 
-      // Update student loan lifecycle
+      console.log("👤 Student Found:", student?._id);
+
       await Student.findByIdAndUpdate(loan.studentId, {
         loanStatus: "Approved",
       });
 
-      // ------------------ PARTNER COMMISSION ------------------
+      console.log("✅ Student loanStatus updated to Approved");
+
+      // ---------- PARTNER COMMISSION ----------
       if (student?.referredBy) {
+        console.log("🔗 Student referred by:", student.referredBy);
+
         const partner = await User.findById(student.referredBy);
 
+        if (!partner) {
+          console.log("❌ Partner not found");
+        }
+
         if (partner && partner.commissionRate > 0) {
+          console.log("💼 Partner Found:", partner.fullName);
+          console.log("📊 Commission Rate:", partner.commissionRate);
+
           const commissionAmount =
             (loan.principalRequested * partner.commissionRate) / 100;
 
-          await Transaction.create({
+          console.log("💰 Calculated Commission:", commissionAmount);
+
+          const txn = await Transaction.create({
             id: `TXN-COMM-${Math.floor(100000 + Math.random() * 900000)}`,
-            userId: partner._id, // Wallet owner = Partner
+            userId: partner._id,
             studentId: student._id,
             type: "Credit",
             desc: `Commission for ${loan.category} Loan`,
@@ -87,33 +206,43 @@ export const updateLoan = async (req, res) => {
             status: "Completed",
           });
 
+          console.log("✅ Commission Transaction Created:", txn._id);
+        } else {
           console.log(
-            `💰 Commission ${commissionAmount} credited to partner ${partner.fullName}`,
+            `⚠️ No commission for partner ${
+              partner?.fullName || "Unknown"
+            } | Rate: ${partner?.commissionRate}`,
           );
         }
+      } else {
+        console.log("ℹ️ Student has no referral partner");
       }
     }
 
-    // ------------------ DISBURSED ------------------
-   if (status === "Disbursed" && loan.status !== "Disbursed") {
-  loan.status = "Disbursed";
-  loan.disbursementDate = new Date();
+    // ================== DISBURSED ==================
+    if (status === "Disbursed" && loan.status !== "Disbursed") {
+      console.log("➡️ Changing status to DISBURSED");
 
-  const student = loan.studentId;
-  const amount = loan.principalRequested;
+      loan.status = "Disbursed";
+      loan.disbursementDate = new Date();
 
-  // 🔥 UPDATE STUDENT LOAN FLAGS
-  await Student.findByIdAndUpdate(student._id, {
-    loanStatus: "Active",
-    loan: "Yes",              // <-- THIS IS THE NEW LINE
-    requestedAmount: amount,  // optional but useful for UI
-  });
+      const student = loan.studentId;
+      const amount = loan.principalRequested;
 
+      console.log("👤 Student ID:", student?._id);
+      console.log("💵 Disbursement Amount:", amount);
 
-      // ✅ CREATE TRANSACTION (LOAN CREDIT)
-      await Transaction.create({
+      await Student.findByIdAndUpdate(student._id, {
+        loanStatus: "Active",
+        loan: "Yes",
+        requestedAmount: amount,
+      });
+
+      console.log("✅ Student flags updated (Active, Loan Yes)");
+
+      const txn = await Transaction.create({
         id: `TXN-FUND-${Math.floor(100000 + Math.random() * 900000)}`,
-        userId: student.userId || student._id, // depends on your schema
+        userId: student.userId || student._id,
         studentId: student._id,
         type: "Credit",
         desc: `${loan.category} Loan Disbursed`,
@@ -121,23 +250,40 @@ export const updateLoan = async (req, res) => {
         amount: amount,
         status: "Completed",
       });
+
+      console.log("✅ Loan Disbursement Transaction Created:", txn._id);
     }
 
-    // ------------------ REJECTED ------------------
+    // ================== REJECTED ==================
     if (status === "Rejected" && loan.status !== "Rejected") {
+      console.log("➡️ Changing status to REJECTED");
+
       loan.status = "Rejected";
+
       await Student.findByIdAndUpdate(loan.studentId._id, {
         loanStatus: "Rejected",
       });
+
+      console.log("✅ Student loanStatus updated to Rejected");
     }
+
+    console.log("📝 Final Loan Object Before Save:", loan);
 
     Object.assign(loan, req.body);
     await loan.save();
 
+    console.log("🎉 Loan Updated Successfully");
+    console.log("==================================================");
+
     res.json({ success: true, data: loan });
   } catch (err) {
-    console.error("Loan Update Error:", err);
-    res.status(500).json({ message: "Update failed" });
+    console.error("🚨 Loan Update Error:", err);
+    console.error("Stack:", err.stack);
+
+    res.status(500).json({
+      message: "Update failed",
+      error: err.message,
+    });
   }
 };
 
