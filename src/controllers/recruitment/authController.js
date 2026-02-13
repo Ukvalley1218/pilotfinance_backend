@@ -811,21 +811,21 @@ const debits = await Transaction.aggregate([
   }
 };
 
-// export const creditPartnerWallet = async (req, res) => {
-//   try {
-//     const { partnerId, amount } = req.body;
+export const creditPartnerWallet = async (req, res) => {
+  try {
+    const { partnerId, amount } = req.body;
 
-//     await Transaction.create({
-//       id: `TXN-TEST-${Math.floor(100000 + Math.random() * 900000)}`,
-//       userId: partnerId,
-//       type: "Credit",
-//       desc: "Manual Test Credit",
-//       amount,
-//       status: "Completed",
-//     });
+    await Transaction.create({
+      id: `TXN-TEST-${Math.floor(100000 + Math.random() * 900000)}`,
+      userId: partnerId,
+      type: "Credit",
+      desc: "Manual Test Credit",
+      amount,
+      status: "Completed",
+    });
 
-//     res.json({ success: true, msg: "Wallet credited" });
-//   } catch (err) {
-//     res.status(500).json({ msg: "Failed" });
-//   }
-// };
+    res.json({ success: true, msg: "Wallet credited" });
+  } catch (err) {
+    res.status(500).json({ msg: "Failed" });
+  }
+};

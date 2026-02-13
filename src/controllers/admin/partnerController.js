@@ -331,3 +331,42 @@ export const approveWithdrawal = async (req, res) => {
     res.status(500).json({ msg: "Approval failed" });
   }
 };
+
+
+/**
+ * @desc Get All Withdrawal Requests (Admin)
+ * @route GET /api/partner/withdrawals
+ */
+export const getAllWithdrawals = async (req, res) => {
+  try {
+    const { status, page = 1, limit = 10 } = req.query;
+
+    const filter = {};
+    if (status) filter.status = status;
+
+    const skip = (page - 1) * limit;
+
+    const totalRecords = await withdrawalModel.countDocuments(filter);
+
+    const withdrawals = await withdrawalModel
+      .find(filter)
+      .populate("partnerId", "fullName email companyName commissionRate")
+      .populate("processedBy", "fullName email role")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    res.json({
+      success: true,
+      data: withdrawals,
+      pagination: {
+        totalRecords,
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(totalRecords / limit),
+      },
+    });
+  } catch (err) {
+    console.error("Get Withdrawals Error:", err);
+    res.status(500).json({ message: "Failed to fetch withdrawals" });
+  }
+};
