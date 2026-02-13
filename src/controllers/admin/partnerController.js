@@ -286,34 +286,77 @@ export const verifyPartnerKYC = async (req, res) => {
 
 export const approveWithdrawal = async (req, res) => {
   try {
+    if (req.user.role !== "Admin") {
+      return res.status(403).json({ msg: "Only admin allowed" });
+    }
+
     const { withdrawalId } = req.body;
-    const adminId = req.user.id;
 
     const withdrawal = await withdrawalModel.findById(withdrawalId);
-    if (!withdrawal) return res.status(404).json({ msg: "Not found" });
+    if (!withdrawal) {
+      return res.status(404).json({ msg: "Withdrawal not found" });
+    }
 
     if (withdrawal.status !== "Pending") {
       return res.status(400).json({ msg: "Already processed" });
     }
 
-    const platformCutPercentage = 10; // 🔥 Your platform fee %
+    const partnerId = withdrawal.partnerId;
+
+    // 🔥 Recalculate balance again (SECURITY)
+    const result = await Transaction.aggregate([
+      {
+        $match: {
+          userId: partnerId,
+          status: "Completed",
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          credits: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "Credit"] }, "$amount", 0],
+            },
+          },
+          debits: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "Debit"] }, "$amount", 0],
+            },
+          },
+        },
+      },
+    ]);
+
+    const balance =
+      (result[0]?.credits || 0) - (result[0]?.debits || 0);
+
+    if (withdrawal.amountRequested > balance) {
+      return res.status(400).json({
+        msg: "Insufficient balance at approval time",
+      });
+    }
+
+    // 🔥 Platform Cut
+    const platformCutPercentage = 10;
     const platformFee =
       (withdrawal.amountRequested * platformCutPercentage) / 100;
 
-    const amountPayable = withdrawal.amountRequested - platformFee;
+    const amountPayable =
+      withdrawal.amountRequested - platformFee;
 
     withdrawal.status = "Completed";
     withdrawal.platformFee = platformFee;
     withdrawal.amountPayable = amountPayable;
-    withdrawal.processedBy = adminId;
+    withdrawal.processedBy = req.user.id;
     withdrawal.processedAt = new Date();
 
     await withdrawal.save();
 
-    // 🔹 Create debit transaction from partner wallet
+    // 🔥 Create Debit Entry
     await Transaction.create({
       id: `TXN-WD-${Math.floor(100000 + Math.random() * 900000)}`,
-      userId: withdrawal.partnerId,
+      userId: partnerId,
       type: "Debit",
       desc: "Withdrawal Processed",
       subDesc: `Withdrawal ID: ${withdrawal._id}`,
@@ -331,6 +374,7 @@ export const approveWithdrawal = async (req, res) => {
     res.status(500).json({ msg: "Approval failed" });
   }
 };
+
 
 
 /**

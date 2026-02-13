@@ -13,6 +13,7 @@ import { login as sharedLogin } from "../user/authController.js";
 import withdrawalModel from "../../models/withdrawal.model.js";
 import bcrypt from "bcryptjs";
 
+
 // --- HELPER: LOG ACTIVITY ---
 const logPartnerActivity = async (partnerId, action, details, category) => {
   try {
@@ -772,27 +773,56 @@ export const rejectStudentLoan = async (req, res) => {
 // --- PARTNER REQUEST WITHDRAW ---
 export const requestWithdrawal = async (req, res) => {
   try {
-    const partnerId = req.user.id;
+    if (req.user.role !== "Partner") {
+      return res.status(403).json({ msg: "Only partners can withdraw" });
+    }
+
+    const partnerId = new mongoose.Types.ObjectId(req.user.id);
     const { amount } = req.body;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({ msg: "Invalid amount" });
     }
 
-    // 🔹 Calculate wallet balance
-   const credits = await Transaction.aggregate([
-  { $match: { userId: partnerId, type: "Credit" } },
-  { $group: { _id: null, total: { $sum: "$amount" } } },
-]);
+    // 🚫 Block if already pending
+    const existingPending = await withdrawalModel.findOne({
+      partnerId,
+      status: "Pending",
+    });
 
-const debits = await Transaction.aggregate([
-  { $match: { userId: partnerId, type: "Debit" } },
-  { $group: { _id: null, total: { $sum: "$amount" } } },
-]);
+    if (existingPending) {
+      return res.status(400).json({
+        msg: "You already have a pending withdrawal request",
+      });
+    }
 
+    // 💰 Calculate Balance (Single Query)
+    const result = await Transaction.aggregate([
+      {
+        $match: {
+          userId: partnerId,
+          status: "Completed",
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          credits: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "Credit"] }, "$amount", 0],
+            },
+          },
+          debits: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "Debit"] }, "$amount", 0],
+            },
+          },
+        },
+      },
+    ]);
 
-    const totalCredits = credits[0]?.total || 0;
-    const totalDebits = debits[0]?.total || 0;
+    const totalCredits = result[0]?.credits || 0;
+    const totalDebits = result[0]?.debits || 0;
     const balance = totalCredits - totalDebits;
 
     if (amount > balance) {
@@ -802,14 +832,21 @@ const debits = await Transaction.aggregate([
     const withdrawal = await withdrawalModel.create({
       partnerId,
       amountRequested: amount,
+      status: "Pending",
     });
 
-    res.status(201).json({ success: true, data: withdrawal });
+    res.status(201).json({
+      success: true,
+      message: "Withdrawal request submitted",
+      balance,
+      data: withdrawal,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ msg: "Withdrawal request failed" });
   }
 };
+
 
 export const creditPartnerWallet = async (req, res) => {
   try {
