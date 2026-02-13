@@ -10,6 +10,7 @@ import { Partner } from "../../models/partner.model.js";
 import UserDocuments from "../../models/UserDocuments.js";
 import { generateToken } from "../../utils/generateToken.js";
 import { login as sharedLogin } from "../user/authController.js";
+import withdrawalModel from "../../models/withdrawal.model.js";
 import bcrypt from "bcryptjs";
 
 // --- HELPER: LOG ACTIVITY ---
@@ -766,3 +767,65 @@ export const rejectStudentLoan = async (req, res) => {
     return res.status(500).json({ success: false, msg: "Server error" });
   }
 };
+
+
+// --- PARTNER REQUEST WITHDRAW ---
+export const requestWithdrawal = async (req, res) => {
+  try {
+    const partnerId = req.user.id;
+    const { amount } = req.body;
+
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ msg: "Invalid amount" });
+    }
+
+    // 🔹 Calculate wallet balance
+   const credits = await Transaction.aggregate([
+  { $match: { userId: partnerId, type: "Credit" } },
+  { $group: { _id: null, total: { $sum: "$amount" } } },
+]);
+
+const debits = await Transaction.aggregate([
+  { $match: { userId: partnerId, type: "Debit" } },
+  { $group: { _id: null, total: { $sum: "$amount" } } },
+]);
+
+
+    const totalCredits = credits[0]?.total || 0;
+    const totalDebits = debits[0]?.total || 0;
+    const balance = totalCredits - totalDebits;
+
+    if (amount > balance) {
+      return res.status(400).json({ msg: "Insufficient wallet balance" });
+    }
+
+    const withdrawal = await withdrawalModel.create({
+      partnerId,
+      amountRequested: amount,
+    });
+
+    res.status(201).json({ success: true, data: withdrawal });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Withdrawal request failed" });
+  }
+};
+
+// export const creditPartnerWallet = async (req, res) => {
+//   try {
+//     const { partnerId, amount } = req.body;
+
+//     await Transaction.create({
+//       id: `TXN-TEST-${Math.floor(100000 + Math.random() * 900000)}`,
+//       userId: partnerId,
+//       type: "Credit",
+//       desc: "Manual Test Credit",
+//       amount,
+//       status: "Completed",
+//     });
+
+//     res.json({ success: true, msg: "Wallet credited" });
+//   } catch (err) {
+//     res.status(500).json({ msg: "Failed" });
+//   }
+// };

@@ -27,6 +27,8 @@ import {
  
   getLoanWithStudentById,
   rejectStudentLoan,
+  requestWithdrawal,
+ 
 } from "../../controllers/recruitment/authController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
 
@@ -122,7 +124,11 @@ router.delete("/delete-user/:studentId",protect,deleteStudentByPartner)
 router.get("/loans", protect, getPartnerLoans);
 router.post("/fund-loan", protect, fundStudentLoan);
 router.post("/reject-loan", protect, rejectStudentLoan);
+router.post("/withdraw-request", protect, requestWithdrawal);
 
+
+// for test credit amount on partners wallet
+// router.post("/admin/manual-credit", protect, creditPartnerWallet);
 
 // 6. Wallet & Transactions
 router.get("/wallet", protect, getWalletData);

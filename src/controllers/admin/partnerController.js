@@ -2,6 +2,8 @@ import PDFDocument from "pdfkit";
 import User from "../../models/User.js";
 
 import { Student } from "../../models/student.model.js";
+import Transaction from "../../models/transaction.model.js";
+import withdrawalModel from "../../models/withdrawal.model.js";
 
 import bcrypt from "bcryptjs";
 import { Notification } from "../../models/notification.model.js";
@@ -278,5 +280,54 @@ export const verifyPartnerKYC = async (req, res) => {
   } catch (err) {
     console.error("Partner KYC Verify Error:", err);
     res.status(500).json({ message: "KYC verification failed" });
+  }
+};
+
+
+export const approveWithdrawal = async (req, res) => {
+  try {
+    const { withdrawalId } = req.body;
+    const adminId = req.user.id;
+
+    const withdrawal = await withdrawalModel.findById(withdrawalId);
+    if (!withdrawal) return res.status(404).json({ msg: "Not found" });
+
+    if (withdrawal.status !== "Pending") {
+      return res.status(400).json({ msg: "Already processed" });
+    }
+
+    const platformCutPercentage = 10; // 🔥 Your platform fee %
+    const platformFee =
+      (withdrawal.amountRequested * platformCutPercentage) / 100;
+
+    const amountPayable = withdrawal.amountRequested - platformFee;
+
+    withdrawal.status = "Completed";
+    withdrawal.platformFee = platformFee;
+    withdrawal.amountPayable = amountPayable;
+    withdrawal.processedBy = adminId;
+    withdrawal.processedAt = new Date();
+
+    await withdrawal.save();
+
+    // 🔹 Create debit transaction from partner wallet
+    await Transaction.create({
+      id: `TXN-WD-${Math.floor(100000 + Math.random() * 900000)}`,
+      userId: withdrawal.partnerId,
+      type: "Debit",
+      desc: "Withdrawal Processed",
+      subDesc: `Withdrawal ID: ${withdrawal._id}`,
+      amount: withdrawal.amountRequested,
+      status: "Completed",
+    });
+
+    res.json({
+      success: true,
+      message: "Withdrawal approved",
+      amountSent: amountPayable,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Approval failed" });
   }
 };
