@@ -32,7 +32,7 @@ export const submitLoanRequest = async (req, res) => {
     // Prevent multiple active loans
     const existingActiveLoan = await Loan.findOne({
       studentId,
-      status: { $nin: ["Completed", "Rejected"] },
+      status: { $nin: ["Completed","Disbursed","Approved", "Rejected"] },
     });
 
     if (existingActiveLoan) {
