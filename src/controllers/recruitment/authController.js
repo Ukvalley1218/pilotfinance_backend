@@ -866,3 +866,91 @@ export const creditPartnerWallet = async (req, res) => {
     res.status(500).json({ msg: "Failed" });
   }
 };
+
+export const getMyWithdrawals = async (req, res) => {
+  try {
+    if (req.user.role !== "Partner") {
+      return res.status(403).json({ msg: "Only partners allowed" });
+    }
+
+    const partnerId = req.user.id;
+
+    const withdrawals = await withdrawalModel
+      .find({ partnerId })
+      .sort({ createdAt: -1 })
+      .populate("processedBy", "fullName email role");
+
+    // 🔥 Calculate summary
+    const summary = withdrawals.reduce(
+      (acc, w) => {
+        if (w.status === "Completed") {
+          acc.totalWithdrawn += w.amountRequested;
+        }
+        if (w.status === "Pending") {
+          acc.totalPending += w.amountRequested;
+        }
+        return acc;
+      },
+      { totalWithdrawn: 0, totalPending: 0 }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: withdrawals,
+      summary,
+    });
+  } catch (err) {
+    console.error("Partner Withdrawals Error:", err);
+    res.status(500).json({ msg: "Failed to fetch withdrawals" });
+  }
+};
+
+export const getWalletSummary = async (req, res) => {
+  try {
+    if (req.user.role !== "Partner") {
+      return res.status(403).json({ msg: "Only partners allowed" });
+    }
+
+    const partnerId = new mongoose.Types.ObjectId(req.user.id);
+
+    const result = await Transaction.aggregate([
+      {
+        $match: {
+          userId: partnerId,
+          status: "Completed",
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          credits: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "Credit"] }, "$amount", 0],
+            },
+          },
+          debits: {
+            $sum: {
+              $cond: [{ $eq: ["$type", "Debit"] }, "$amount", 0],
+            },
+          },
+        },
+      },
+    ]);
+
+    const totalCredits = result[0]?.credits || 0;
+    const totalDebits = result[0]?.debits || 0;
+    const balance = totalCredits - totalDebits;
+
+    res.status(200).json({
+      success: true,
+      wallet: {
+        totalCredits,
+        totalDebits,
+        balance,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ msg: "Wallet summary failed" });
+  }
+};
+
