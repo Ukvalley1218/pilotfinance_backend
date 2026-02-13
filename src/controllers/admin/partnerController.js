@@ -284,15 +284,21 @@ export const verifyPartnerKYC = async (req, res) => {
 };
 
 
-export const approveWithdrawal = async (req, res) => {
+export const updateWithdrawalStatus = async (req, res) => {
   try {
     if (req.user.role !== "Admin") {
       return res.status(403).json({ msg: "Only admin allowed" });
     }
 
-    const { withdrawalId } = req.body;
+    const withdrawalId = req.params.id;
+    const { status, reason } = req.body;
+
+    if (!["Approved", "Rejected"].includes(status)) {
+      return res.status(400).json({ msg: "Invalid status" });
+    }
 
     const withdrawal = await withdrawalModel.findById(withdrawalId);
+
     if (!withdrawal) {
       return res.status(404).json({ msg: "Withdrawal not found" });
     }
@@ -301,79 +307,94 @@ export const approveWithdrawal = async (req, res) => {
       return res.status(400).json({ msg: "Already processed" });
     }
 
-    const partnerId = withdrawal.partnerId;
+    // ================= APPROVE =================
+    if (status === "Approved") {
+      const partnerId = withdrawal.partnerId;
 
-    // 🔥 Recalculate balance again (SECURITY)
-    const result = await Transaction.aggregate([
-      {
-        $match: {
-          userId: partnerId,
-          status: "Completed",
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          credits: {
-            $sum: {
-              $cond: [{ $eq: ["$type", "Credit"] }, "$amount", 0],
-            },
-          },
-          debits: {
-            $sum: {
-              $cond: [{ $eq: ["$type", "Debit"] }, "$amount", 0],
-            },
+      // 🔐 Recalculate wallet balance
+      const result = await Transaction.aggregate([
+        {
+          $match: {
+            userId: partnerId,
+            status: "Completed",
           },
         },
-      },
-    ]);
+        {
+          $group: {
+            _id: null,
+            credits: {
+              $sum: {
+                $cond: [{ $eq: ["$type", "Credit"] }, "$amount", 0],
+              },
+            },
+            debits: {
+              $sum: {
+                $cond: [{ $eq: ["$type", "Debit"] }, "$amount", 0],
+              },
+            },
+          },
+        },
+      ]);
 
-    const balance =
-      (result[0]?.credits || 0) - (result[0]?.debits || 0);
+      const balance =
+        (result[0]?.credits || 0) - (result[0]?.debits || 0);
 
-    if (withdrawal.amountRequested > balance) {
-      return res.status(400).json({
-        msg: "Insufficient balance at approval time",
+      if (withdrawal.amountRequested > balance) {
+        return res.status(400).json({
+          msg: "Insufficient balance",
+        });
+      }
+
+      const platformFee =
+        (withdrawal.amountRequested * 10) / 100;
+
+      withdrawal.status = "Completed";
+      withdrawal.platformFee = platformFee;
+      withdrawal.amountPayable =
+        withdrawal.amountRequested - platformFee;
+      withdrawal.processedBy = req.user.id;
+      withdrawal.processedAt = new Date();
+
+      await withdrawal.save();
+
+      // Create Debit transaction
+      await Transaction.create({
+        id: `TXN-WD-${Date.now()}`,
+        userId: partnerId,
+        type: "Debit",
+        desc: "Withdrawal Processed",
+        subDesc: `Withdrawal ID: ${withdrawal._id}`,
+        amount: withdrawal.amountRequested,
+        status: "Completed",
+      });
+
+      return res.json({
+        success: true,
+        message: "Withdrawal approved",
       });
     }
 
-    // 🔥 Platform Cut
-    const platformCutPercentage = 10;
-    const platformFee =
-      (withdrawal.amountRequested * platformCutPercentage) / 100;
+    // ================= REJECT =================
+    if (status === "Rejected") {
+      withdrawal.status = "Rejected";
+      withdrawal.rejectionReason =
+        reason || "Rejected by admin";
+      withdrawal.processedBy = req.user.id;
+      withdrawal.processedAt = new Date();
 
-    const amountPayable =
-      withdrawal.amountRequested - platformFee;
+      await withdrawal.save();
 
-    withdrawal.status = "Completed";
-    withdrawal.platformFee = platformFee;
-    withdrawal.amountPayable = amountPayable;
-    withdrawal.processedBy = req.user.id;
-    withdrawal.processedAt = new Date();
-
-    await withdrawal.save();
-
-    // 🔥 Create Debit Entry
-    await Transaction.create({
-      id: `TXN-WD-${Math.floor(100000 + Math.random() * 900000)}`,
-      userId: partnerId,
-      type: "Debit",
-      desc: "Withdrawal Processed",
-      subDesc: `Withdrawal ID: ${withdrawal._id}`,
-      amount: withdrawal.amountRequested,
-      status: "Completed",
-    });
-
-    res.json({
-      success: true,
-      message: "Withdrawal approved",
-      amountSent: amountPayable,
-    });
+      return res.json({
+        success: true,
+        message: "Withdrawal rejected",
+      });
+    }
   } catch (err) {
     console.error(err);
-    res.status(500).json({ msg: "Approval failed" });
+    res.status(500).json({ msg: "Update failed" });
   }
 };
+
 
 
 

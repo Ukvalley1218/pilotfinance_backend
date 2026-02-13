@@ -7,8 +7,9 @@ import {
   getPartnerById,
   deletePartner,
   verifyPartnerKYC,
-  approveWithdrawal,
+  
   getAllWithdrawals,
+  updateWithdrawalStatus,
 } from "../../controllers/admin/partnerController.js";
 
 const router = express.Router();
@@ -22,7 +23,8 @@ router.get("/", getAllPartners);
   router.put("/:id", updatePartner);
   router.put("/verify/:id", verifyPartnerKYC);
   router.delete("/:id", deletePartner);
-  router.post("/withdraw-approve", protect, approveWithdrawal);
+  router.put("/withdrawals/:id", protect, updateWithdrawalStatus);
+
 
 
 export default router;
