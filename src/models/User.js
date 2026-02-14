@@ -55,7 +55,17 @@ const userSchema = new mongoose.Schema(
     companyName: { type: String },
     businessType: { type: String },
     website: { type: String },
-    commissionRate: { type: Number, default: 1.2 },
+   commission: {
+  type: {
+    type: String,
+    enum: ["percentage", "fixed", "both"],
+    default: "percentage",
+  },
+  percentage: { type: Number, default: 0 },
+  fixedAmount: { type: Number, default: 0 },
+},
+
+
 
     referredStudents: [
       { type: mongoose.Schema.Types.ObjectId, ref: "Student" },

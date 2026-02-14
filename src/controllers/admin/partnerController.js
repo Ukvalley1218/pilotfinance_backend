@@ -4,6 +4,7 @@ import User from "../../models/User.js";
 import { Student } from "../../models/student.model.js";
 import Transaction from "../../models/transaction.model.js";
 import withdrawalModel from "../../models/withdrawal.model.js";
+import CommissionSettings from "../../models/commissionSettings.model.js";
 
 import bcrypt from "bcryptjs";
 import { Notification } from "../../models/notification.model.js";
@@ -12,6 +13,89 @@ import { Notification } from "../../models/notification.model.js";
  * @desc Create Partner
  * @route POST /api/partner/partners
  */
+export const getGlobalCommission = async (req, res) => {
+  try {
+    if (req.user.role !== "Admin") {
+      return res.status(403).json({ msg: "Admin access required" });
+    }
+
+    const settings = await CommissionSettings.findOne();
+
+    return res.status(200).json({
+      success: true,
+      data: settings || null,
+    });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ msg: "Failed to fetch commission" });
+  }
+};
+
+export const getAllPartnerCommissions = async (req, res) => {
+  try {
+    if (req.user.role !== "Admin") {
+      return res.status(403).json({ msg: "Admin access required" });
+    }
+
+    const partners = await User.find({ role: "Partner" })
+      .select("fullName email commission")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      data: partners,
+    });
+  } catch (err) {
+    res.status(500).json({ msg: "Failed to fetch partners" });
+  }
+};
+
+
+
+// --- ADMIN: SET PARTNER COMMISSION ---
+export const setGlobalCommission = async (req, res) => {
+  try {
+    if (req.user.role !== "Admin") {
+      return res.status(403).json({ msg: "Admin access required" });
+    }
+
+    const { type, percentage, fixedAmount } = req.body;
+
+    if (!["percentage", "fixed", "both"].includes(type)) {
+      return res.status(400).json({ msg: "Invalid commission type" });
+    }
+
+    if (percentage < 0 || fixedAmount < 0) {
+      return res.status(400).json({ msg: "Invalid values" });
+    }
+
+    // Only 1 global config
+    let settings = await CommissionSettings.findOne();
+
+    if (!settings) {
+      settings = await CommissionSettings.create({
+        type,
+        percentage: percentage || 0,
+        fixedAmount: fixedAmount || 0,
+      });
+    } else {
+      settings.type = type;
+      settings.percentage = percentage || 0;
+      settings.fixedAmount = fixedAmount || 0;
+      await settings.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Global commission updated",
+      data: settings,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Failed to update commission" });
+  }
+};
+
 export const createPartner = async (req, res) => {
   try {
     const { fullName, email, phone, password, companyName, businessType } = req.body;
@@ -435,3 +519,4 @@ export const getAllWithdrawals = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch withdrawals" });
   }
 };
+

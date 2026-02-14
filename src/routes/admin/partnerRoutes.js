@@ -10,6 +10,9 @@ import {
   
   getAllWithdrawals,
   updateWithdrawalStatus,
+  setGlobalCommission,
+  getGlobalCommission,
+  
 } from "../../controllers/admin/partnerController.js";
 
 const router = express.Router();
@@ -23,6 +26,10 @@ router.get("/", getAllPartners);
   router.put("/:id", updatePartner);
   router.put("/verify/:id", verifyPartnerKYC);
   router.delete("/:id", deletePartner);
+  router.put("/commission", protect, setGlobalCommission);
+router.get("/commission", protect, getGlobalCommission);
+
+
   router.put("/withdrawals/:id", protect, updateWithdrawalStatus);
 
 

@@ -3,6 +3,7 @@ import Loan from "../../models/loan.js";
 import mongoose from "mongoose";
 import Transaction from "../../models/transaction.model.js";
 import User from "../../models/User.js";
+import CommissionSettings from "../../models/commissionSettings.model.js";
 
 /**
  * @desc Create Loan (Triggered from Partner/User Panel)
@@ -161,63 +162,63 @@ export const updateLoan = async (req, res) => {
     const { status } = req.body;
 
     // ================== APPROVED ==================
-    if (status === "Approved" && loan.status !== "Approved") {
-      console.log("➡️ Changing status to APPROVED");
+ // ================== APPROVED ==================
+if (status === "Approved" && loan.status !== "Approved") {
+  console.log("➡️ Changing status to APPROVED");
 
-      loan.status = "Approved";
+  loan.status = "Approved";
 
-      const student = await Student.findById(loan.studentId);
+  const student = await Student.findById(loan.studentId);
+  await Student.findByIdAndUpdate(loan.studentId, {
+    loanStatus: "Approved",
+  });
 
-      console.log("👤 Student Found:", student?._id);
+  console.log("✅ Student loanStatus updated to Approved");
 
-      await Student.findByIdAndUpdate(loan.studentId, {
-        loanStatus: "Approved",
-      });
+  // ---------- PARTNER COMMISSION ----------
+  if (student?.referredBy && !loan.commissionPaid) {
+    const partner = await User.findById(student.referredBy);
 
-      console.log("✅ Student loanStatus updated to Approved");
+    if (partner && partner.commission) {
+      const commissionConfig = await CommissionSettings.findOne();
 
-      // ---------- PARTNER COMMISSION ----------
-      if (student?.referredBy) {
-        console.log("🔗 Student referred by:", student.referredBy);
+if (student?.referredBy && commissionConfig) {
+  const partner = await User.findById(student.referredBy);
 
-        const partner = await User.findById(student.referredBy);
+  let commissionAmount = 0;
+  const P = loan.principalRequested;
 
-        if (!partner) {
-          console.log("❌ Partner not found");
-        }
+  if (commissionConfig.type === "percentage") {
+    commissionAmount = (P * commissionConfig.percentage) / 100;
+  }
 
-        if (partner && partner.commissionRate > 0) {
-          console.log("💼 Partner Found:", partner.fullName);
-          console.log("📊 Commission Rate:", partner.commissionRate);
+  if (commissionConfig.type === "fixed") {
+    commissionAmount = commissionConfig.fixedAmount;
+  }
 
-          const commissionAmount =
-            (loan.principalRequested * partner.commissionRate) / 100;
+  if (commissionConfig.type === "both") {
+    commissionAmount =
+      (P * commissionConfig.percentage) / 100 +
+      commissionConfig.fixedAmount;
+  }
 
-          console.log("💰 Calculated Commission:", commissionAmount);
+  if (commissionAmount > 0) {
+    await Transaction.create({
+      id: `TXN-COMM-${Math.floor(100000 + Math.random() * 900000)}`,
+      userId: partner._id,
+      studentId: student._id,
+      type: "Credit",
+      desc: `Commission for ${loan.category} Loan`,
+      subDesc: `Loan Ref: ${loan.loanId}`,
+      amount: commissionAmount,
+      status: "Completed",
+    });
+  }
+}
+}
+  }
+}
 
-          const txn = await Transaction.create({
-            id: `TXN-COMM-${Math.floor(100000 + Math.random() * 900000)}`,
-            userId: partner._id,
-            studentId: student._id,
-            type: "Credit",
-            desc: `Commission for ${loan.category} Loan`,
-            subDesc: `Loan Ref: ${loan.loanId}`,
-            amount: commissionAmount,
-            status: "Completed",
-          });
-
-          console.log("✅ Commission Transaction Created:", txn._id);
-        } else {
-          console.log(
-            `⚠️ No commission for partner ${
-              partner?.fullName || "Unknown"
-            } | Rate: ${partner?.commissionRate}`,
-          );
-        }
-      } else {
-        console.log("ℹ️ Student has no referral partner");
-      }
-    }
 
     // ================== DISBURSED ==================
     if (status === "Disbursed" && loan.status !== "Disbursed") {

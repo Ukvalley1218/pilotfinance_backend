@@ -12,6 +12,8 @@ const loanSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+    commissionPaid: { type: Boolean, default: false },
+
 
     // --- IDENTIFIERS ---
     loanId: {
