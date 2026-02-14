@@ -911,12 +911,13 @@ export const getWalletSummary = async (req, res) => {
       return res.status(403).json({ msg: "Only partners allowed" });
     }
 
-    const partnerId = new mongoose.Types.ObjectId(req.user.id);
+    const partnerId = req.user.id;
 
+    // 1️⃣ Calculate transaction balance
     const result = await Transaction.aggregate([
       {
         $match: {
-          userId: partnerId,
+          userId: new mongoose.Types.ObjectId(partnerId),
           status: "Completed",
         },
       },
@@ -939,18 +940,43 @@ export const getWalletSummary = async (req, res) => {
 
     const totalCredits = result[0]?.credits || 0;
     const totalDebits = result[0]?.debits || 0;
-    const balance = totalCredits - totalDebits;
+
+    // 2️⃣ Get pending withdrawals
+    const pendingWithdrawals = await withdrawalModel.aggregate([
+      {
+        $match: {
+          partnerId: new mongoose.Types.ObjectId(partnerId),
+          status: "Pending",
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalPending: { $sum: "$amountRequested" },
+        },
+      },
+    ]);
+
+    const totalPending = pendingWithdrawals[0]?.totalPending || 0;
+
+    // 3️⃣ Calculate available balance
+    const actualBalance = totalCredits - totalDebits;
+    const availableBalance = actualBalance - totalPending;
 
     res.status(200).json({
       success: true,
       wallet: {
         totalCredits,
         totalDebits,
-        balance,
+        pendingWithdrawals: totalPending,
+        actualBalance,      // before hold
+        availableBalance,   // usable balance
       },
     });
   } catch (err) {
+    console.error(err);
     res.status(500).json({ msg: "Wallet summary failed" });
   }
 };
+
 
