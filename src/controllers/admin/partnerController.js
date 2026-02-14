@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
 import User from "../../models/User.js";
-
+import { Parser } from "json2csv";
 import { Student } from "../../models/student.model.js";
 import Transaction from "../../models/transaction.model.js";
 import withdrawalModel from "../../models/withdrawal.model.js";
@@ -226,97 +226,47 @@ export const deletePartner = async (req, res) => {
  * @desc Download Partner Report as PDF
  * @route GET /api/partner/partners/:id/report/pdf
  */
-export const downloadPartnerReportPDF = async (req, res) => {
+export const exportPartnersCSV = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const user = await User.findById(id).lean();
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "Partner not found for report generation.",
-      });
+    if (req.user.role !== "Partner") {
+      return res.status(403).json({ msg: "Partner access required" });
     }
 
-    // 🧾 Create PDF
-    const doc = new PDFDocument({ margin: 40, size: "A4" });
+    const partners = await User.find({ role: "Partner" })
+      .select("-password -otpCode -otpExpires -ssnPin")
+      .lean();
 
-    // Set response headers
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader(
-      "Content-Disposition",
-      `attachment; filename=partner-report-${partner.name}.pdf`
-    );
+    if (!partners.length) {
+      return res.status(404).json({ msg: "No partners found" });
+    }
 
-    doc.pipe(res);
+    // 🔹 Format data properly
+    const formattedData = partners.map((p) => ({
+      Name: p.fullName,
+      Email: p.email,
+      Phone: p.phone || "",
+      Company: p.companyName || "",
+      BusinessType: p.businessType || "",
+      Country: p.country || "",
+      Status: p.status || "",
+      KYCStatus: p.kycStatus || "",
+      CommissionType: p.commission?.type || "percentage",
+      CommissionPercentage: p.commission?.percentage || 0,
+      CommissionFixedAmount: p.commission?.fixedAmount || 0,
+      RegisteredAt: p.createdAt,
+    }));
 
-    // 🎨 Header
-    doc
-      .fontSize(20)
-      .text("Partner Detailed Report", { align: "center" })
-      .moveDown(1.5);
+    const json2csv = new Parser();
+    const csv = json2csv.parse(formattedData);
 
-    // Helper for section titles
-    const sectionTitle = (title) => {
-      doc.moveDown().fontSize(14).text(title, { underline: true });
-      doc.moveDown(0.5);
-    };
-
-    const field = (label, value) => {
-      doc.fontSize(11).text(`${label}: ${value || "N/A"}`);
-    };
-
-    // 👤 Personal Info
-    sectionTitle("Personal Information");
-    field("Name", partner.name);
-    field("Email", partner.email);
-    field("Phone", partner.phone);
-    field("Gender", partner.gender);
-    field("Date of Birth", partner.dob);
-    field("Country", partner.country);
-    field("Address", partner.address);
-
-    // 🏢 Business Info
-    sectionTitle("Business Information");
-    field("Business Name", partner.businessName);
-    field("Business Type", partner.businessType);
-    field("Registration Number", partner.regNumber);
-    field("GST ID", partner.gstId);
-    field("Website", partner.website);
-    field("Experience", partner.experience);
-
-    // 🪪 Identity Info
-    sectionTitle("Identity Information");
-    field("ID Proof Type", partner.idProofType);
-    field("ID Proof Number", partner.idProofNumber);
-
-    // 💳 Subscription Info
-    sectionTitle("Subscription Details");
-    field("Plan Type", partner.planType);
-    field("Fee Amount", `₹ ${partner.feeAmount}`);
-    field("Status", partner.status);
-
-    // 🕒 Timestamps
-    sectionTitle("System Information");
-    field("Registered On", new Date(partner.createdAt).toLocaleString());
-    field("Last Updated", new Date(partner.updatedAt).toLocaleString());
-
-    // Footer
-    doc
-      .moveDown(2)
-      .fontSize(10)
-      .text("This is a system generated report.", { align: "center" });
-
-    doc.end();
-  } catch (error) {
-    console.error("Partner PDF Report Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error while generating partner PDF report.",
-    });
+    res.header("Content-Type", "text/csv");
+    res.attachment("partners-report.csv");
+    return res.send(csv);
+  } catch (err) {
+    console.error("Export CSV Error:", err);
+    res.status(500).json({ msg: "CSV export failed" });
   }
 };
-
 
 
 /**

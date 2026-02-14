@@ -12,6 +12,7 @@ import {
   updateWithdrawalStatus,
   setGlobalCommission,
   getGlobalCommission,
+  exportPartnersCSV,
   
 } from "../../controllers/admin/partnerController.js";
 
@@ -23,6 +24,8 @@ router.get("/", getAllPartners);
   router.get("/withdrawals", protect, getAllWithdrawals);
   router.put("/commission", protect, setGlobalCommission);
   router.get("/commission", protect, getGlobalCommission);
+  router.get("/export/csv", exportPartnersCSV);
+
   router.post("/", createPartner);
   router.get("/:id", getPartnerById);
   router.put("/:id", updatePartner);
