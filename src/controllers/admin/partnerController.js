@@ -228,8 +228,8 @@ export const deletePartner = async (req, res) => {
  */
 export const exportPartnersCSV = async (req, res) => {
   try {
-    if (req.user.role !== "Partner") {
-      return res.status(403).json({ msg: "Partner access required" });
+    if (req.user.role !== "Admin") {
+      return res.status(403).json({ msg: "Admin access required" });
     }
 
     const partners = await User.find({ role: "Partner" })
