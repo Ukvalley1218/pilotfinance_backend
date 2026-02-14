@@ -134,11 +134,14 @@ router.post("/withdraw-request", protect, requestWithdrawal);
 router.post("/admin/manual-credit", protect, creditPartnerWallet);
 
 // 6. Wallet & Transactions
+// 6. Wallet & Transactions
 router.get("/wallet", protect, getWalletData);
-
-router.get("/:id", protect, getLoanWithStudentById);
 router.get("/withdrawals", protect, getMyWithdrawals);
 router.get("/wallet-summary", protect, getWalletSummary);
+
+// ⚠️ ALWAYS KEEP PARAM ROUTES LAST
+router.get("/:id", protect, getLoanWithStudentById);
+
 
 
 export default router;
