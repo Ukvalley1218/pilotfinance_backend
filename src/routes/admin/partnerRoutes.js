@@ -22,12 +22,12 @@ router.use(protect, adminOnly);
 router.get("/", getAllPartners);
   router.get("/withdrawals", protect, getAllWithdrawals);
   router.put("/commission", protect, setGlobalCommission);
+  router.get("/commission", protect, getGlobalCommission);
   router.post("/", createPartner);
   router.get("/:id", getPartnerById);
   router.put("/:id", updatePartner);
   router.put("/verify/:id", verifyPartnerKYC);
   router.delete("/:id", deletePartner);
-router.get("/commission", protect, getGlobalCommission);
 
 
   router.put("/withdrawals/:id", protect, updateWithdrawalStatus);
