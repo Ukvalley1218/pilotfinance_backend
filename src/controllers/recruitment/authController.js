@@ -1122,9 +1122,12 @@ export const getWalletSummary = async (req, res) => {
 
     const partnerId = new mongoose.Types.ObjectId(req.user.id);
 
-    // 🔥 Parallel execution
-    const [transactionResult, withdrawalResult] = await Promise.all([
+    const [
+      transactionResult,
+      withdrawalStats
+    ] = await Promise.all([
 
+      // 1️⃣ Real Transactions
       Transaction.aggregate([
         {
           $match: {
@@ -1135,12 +1138,12 @@ export const getWalletSummary = async (req, res) => {
         {
           $group: {
             _id: null,
-            credits: {
+            totalCredits: {
               $sum: {
                 $cond: [{ $eq: ["$type", "Credit"] }, "$amount", 0],
               },
             },
-            debits: {
+            totalDebits: {
               $sum: {
                 $cond: [{ $eq: ["$type", "Debit"] }, "$amount", 0],
               },
@@ -1149,25 +1152,32 @@ export const getWalletSummary = async (req, res) => {
         },
       ]),
 
+      // 2️⃣ Withdrawal Stats
       withdrawalModel.aggregate([
         {
-          $match: {
-            partnerId,
-            status: "Pending",
-          },
+          $match: { partnerId },
         },
         {
           $group: {
-            _id: null,
-            totalPending: { $sum: "$amountRequested" },
+            _id: "$status",
+            totalAmount: { $sum: "$amountRequested" },
           },
         },
       ]),
     ]);
 
-    const totalCredits = transactionResult[0]?.credits || 0;
-    const totalDebits = transactionResult[0]?.debits || 0;
-    const totalPending = withdrawalResult[0]?.totalPending || 0;
+    const totalCredits = transactionResult[0]?.totalCredits || 0;
+    const totalDebits = transactionResult[0]?.totalDebits || 0;
+
+    let totalPending = 0;
+    let totalWithdrawn = 0;
+    let totalRejected = 0;
+
+    withdrawalStats.forEach(item => {
+      if (item._id === "Pending") totalPending = item.totalAmount;
+      if (item._id === "Completed") totalWithdrawn = item.totalAmount;
+      if (item._id === "Rejected") totalRejected = item.totalAmount;
+    });
 
     const actualBalance = totalCredits - totalDebits;
     const availableBalance = actualBalance - totalPending;
@@ -1177,6 +1187,8 @@ export const getWalletSummary = async (req, res) => {
       wallet: {
         totalCredits,
         totalDebits,
+        totalWithdrawn,     // Only completed withdrawals
+        totalRejected,      // For analytics only
         pendingWithdrawals: totalPending,
         actualBalance,
         availableBalance,
@@ -1191,6 +1203,7 @@ export const getWalletSummary = async (req, res) => {
     });
   }
 };
+
 
 
 
