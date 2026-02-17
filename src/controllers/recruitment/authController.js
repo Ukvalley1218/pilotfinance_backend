@@ -586,53 +586,95 @@ export const verifyStudent = async (req, res) => {
 
 export const addStudentByPartner = async (req, res) => {
   try {
-    const partnerId = req.user.id;
+    const partnerId = req.user?.id;
     const { name, email, phone, password, address } = req.body;
 
+    // ✅ Check partner authentication
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        msg: "Unauthorized. Partner login required.",
+      });
+    }
+
+    // ✅ Required fields validation
     if (!name || !email || !phone || !password) {
-      return res
-        .status(400)
-        .json({ success: false, msg: "Missing required fields" });
+      return res.status(400).json({
+        success: false,
+        msg: "Name, Email, Phone and Password are required.",
+      });
     }
 
     const cleanEmail = email.toLowerCase().trim();
 
+    // ✅ Check existing email
     const existingUser = await User.findOne({ email: cleanEmail });
     if (existingUser) {
-      return res
-        .status(400)
-        .json({ success: false, msg: "Email already registered" });
+      return res.status(409).json({
+        success: false,
+        msg: "This email is already registered. Please use another email.",
+      });
     }
 
-    // ✅ DO NOT HASH HERE — schema will hash automatically
+    // ✅ Create student (password will auto-hash in schema)
     const student = await Student.create({
       name,
       email: cleanEmail,
       phone,
-      password, // plain password goes in
+      password,
       address,
       referredBy: partnerId,
       status: "Pending",
       kycStatus: "Pending",
     });
 
+    // ✅ Update partner record
     await User.findByIdAndUpdate(partnerId, {
       $addToSet: { referredStudents: student._id },
     });
 
+    // ✅ Log activity
     await logPartnerActivity(
       partnerId,
       "Student Added",
       `Added ${name}`,
-      "Student",
+      "Student"
     );
 
-    res.status(201).json({ success: true, student });
+    return res.status(201).json({
+      success: true,
+      msg: "Student added successfully.",
+      student,
+    });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, msg: "Failed to add student" });
+    console.error("Add Student Error:", err);
+
+    // ✅ Mongoose validation error
+    if (err.name === "ValidationError") {
+      const errors = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({
+        success: false,
+        msg: errors.join(", "),
+      });
+    }
+
+    // ✅ Duplicate key error (unique index)
+    if (err.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        msg: "Duplicate field value entered. Email may already exist.",
+      });
+    }
+
+    // ✅ Default fallback
+    return res.status(500).json({
+      success: false,
+      msg: "Something went wrong while adding student. Please try again.",
+    });
   }
 };
+
 
 // --- 19. DELETE STUDENT (PARTNER CONTROLLED) ---
 export const deleteStudentByPartner = async (req, res) => {
