@@ -637,7 +637,7 @@ export const fundStudentLoan = async (req, res) => {
 export const verifyStudent = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const { status, kycStatus } = req.body;
+    const { status, kycStatus,reason } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(studentId)) {
       return res.status(400).json({
@@ -684,6 +684,7 @@ export const verifyStudent = async (req, res) => {
     // ✅ Update student
     student.status = status || "Approved";
     if (kycStatus) student.kycStatus = kycStatus;
+    if(reason) student.reason = reason;
 
     await student.save();
 

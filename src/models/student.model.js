@@ -174,6 +174,7 @@ const studentSchema = new mongoose.Schema(
       enum: ["Not Submitted", "Pending","Approved", "Partially Verified", "Verified","Rejected"],
       default: "Not Submitted",
     },
+    reason:{ type: String, default: "" },
     loan: {
       type: String,
       enum: ["Yes", "No"],
