@@ -19,6 +19,7 @@ export const getKycStatus = async (req, res) => {
         country: student.country,
         state: student.state,
         phone: student.phone,
+        reason:student.reason
       },
     });
   } catch {
