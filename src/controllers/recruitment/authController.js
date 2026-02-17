@@ -1285,17 +1285,58 @@ export const creditPartnerWallet = async (req, res) => {
 export const getMyWithdrawals = async (req, res) => {
   try {
     if (req.user.role !== "Partner") {
-      return res.status(403).json({ msg: "Only partners allowed" });
+      return res.status(403).json({
+        success: false,
+        msg: "Only partners allowed",
+      });
     }
 
     const partnerId = req.user.id;
 
+    // 1️⃣ Fetch Withdrawals
     const withdrawals = await withdrawalModel
       .find({ partnerId })
       .sort({ createdAt: -1 })
-      .populate("processedBy", "fullName email role");
+      .lean();
 
-    // 🔥 Calculate summary
+    // 2️⃣ Fetch Commission Credit Transactions
+    const commissionTransactions = await Transaction.find({
+      userId: partnerId,
+      type: "Credit",
+      status: "Completed",
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // 3️⃣ Format Withdrawal Data
+    const formattedWithdrawals = withdrawals.map((w) => ({
+      id: w._id,
+      type: "Withdrawal",
+      status: w.status,
+      amount: w.amountRequested,
+      createdAt: w.createdAt,
+      description: `Withdrawal Request (${w.status})`,
+    }));
+
+    // 4️⃣ Format Commission Transactions
+    const formattedCommissions = commissionTransactions.map((t) => ({
+      id: t._id,
+      type: "Commission",
+      status: t.status,
+      amount: t.amount,
+      createdAt: t.createdAt,
+      description: t.desc || "Commission Credited",
+      subDescription: t.subDesc || "",
+      txnId: t.id,
+    }));
+
+    // 5️⃣ Merge Both
+    const mergedHistory = [
+      ...formattedWithdrawals,
+      ...formattedCommissions,
+    ].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // 🔥 Summary
     const summary = withdrawals.reduce(
       (acc, w) => {
         if (w.status === "Completed") {
@@ -1304,21 +1345,29 @@ export const getMyWithdrawals = async (req, res) => {
         if (w.status === "Pending") {
           acc.totalPending += w.amountRequested;
         }
+        if (w.status === "Rejected") {
+          acc.totalRejected += w.amountRequested;
+        }
         return acc;
       },
-      { totalWithdrawn: 0, totalPending: 0 }
+      { totalWithdrawn: 0, totalPending: 0, totalRejected: 0 }
     );
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      data: withdrawals,
       summary,
+      data: mergedHistory,
     });
+
   } catch (err) {
     console.error("Partner Withdrawals Error:", err);
-    res.status(500).json({ msg: "Failed to fetch withdrawals" });
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to fetch withdrawal & commission history",
+    });
   }
 };
+
 
 export const getWalletSummary = async (req, res) => {
   try {
