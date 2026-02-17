@@ -31,6 +31,9 @@ import {
   creditPartnerWallet,
   getMyWithdrawals,
   getWalletSummary,
+  searchLoansByStudentName,
+  searchMyStudents,
+  dashboardSearch,
  
 } from "../../controllers/recruitment/authController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
@@ -138,6 +141,30 @@ router.post("/admin/manual-credit", protect, creditPartnerWallet);
 router.get("/wallet", protect, getWalletData);
 router.get("/withdrawals", protect, getMyWithdrawals);
 router.get("/wallet-summary", protect, getWalletSummary);
+
+// search apis 
+// GET /api/partner/search/loans?search=rahul&page=1&limit=10
+router.get(
+  "/search/loans",
+  protect,
+  searchLoansByStudentName
+);
+
+// 2️⃣ Search Partner's Own Students
+// GET /api/partner/search/students?search=rahul&page=1&limit=10
+router.get(
+  "/search/students",
+  protect,
+  searchMyStudents
+);
+
+// 3️⃣ Dashboard Global Search (Student + Loan)
+// GET /api/partner/search/dashboard?search=rahul
+router.get(
+  "/search/dashboard",
+  protect,
+  dashboardSearch
+);
 
 // ⚠️ ALWAYS KEEP PARAM ROUTES LAST
 router.get("/:id", protect, getLoanWithStudentById);

@@ -1193,3 +1193,140 @@ export const getWalletSummary = async (req, res) => {
 
 
 
+
+// search apis 
+export const searchLoansByStudentName = async (req, res) => {
+  try {
+    const partnerId = req.user?.id;
+    const { search = "", page = 1, limit = 10 } = req.query;
+
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        msg: "Unauthorized",
+      });
+    }
+
+    // Step 1: Find partner's students matching name
+    const students = await Student.find({
+      referredBy: partnerId,
+      name: { $regex: search, $options: "i" },
+    }).select("_id name email phone");
+
+    const studentIds = students.map(s => s._id);
+
+    if (studentIds.length === 0) {
+      return res.status(200).json({
+        success: true,
+        data: [],
+      });
+    }
+
+    // Step 2: Find loans for those students
+    const loans = await Loan.find({
+      studentId: { $in: studentIds },
+    })
+      .populate("studentId", "name email phone")
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
+
+    return res.status(200).json({
+      success: true,
+      count: loans.length,
+      data: loans,
+    });
+
+  } catch (err) {
+    console.error("Search Loans Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to search loans",
+    });
+  }
+};
+
+export const searchMyStudents = async (req, res) => {
+  try {
+    const partnerId = req.user?.id;
+    const { search = "", page = 1, limit = 10 } = req.query;
+
+    const students = await Student.find({
+      referredBy: partnerId,
+      $or: [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+      ],
+    })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      count: students.length,
+      data: students,
+    });
+
+  } catch (err) {
+    console.error("Search Students Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to search students",
+    });
+  }
+};
+
+export const dashboardSearch = async (req, res) => {
+  try {
+    const partnerId = req.user?.id;
+    const { search = "" } = req.query;
+
+    if (!search) {
+      return res.status(400).json({
+        success: false,
+        msg: "Search query required",
+      });
+    }
+
+    // 1️⃣ Search Students
+    const students = await Student.find({
+      referredBy: partnerId,
+      $or: [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ],
+    })
+      .select("name email phone status kycStatus")
+      .limit(5)
+      .lean();
+
+    const studentIds = students.map(s => s._id);
+
+    // 2️⃣ Search Loans
+    const loans = await Loan.find({
+      studentId: { $in: studentIds },
+    })
+      .select("loanId status totalAmount principalRequested createdAt")
+      .populate("studentId", "name")
+      .limit(5)
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      results: {
+        students,
+        loans,
+      },
+    });
+
+  } catch (err) {
+    console.error("Dashboard Search Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Search failed",
+    });
+  }
+};
