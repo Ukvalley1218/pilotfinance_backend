@@ -171,7 +171,7 @@ const studentSchema = new mongoose.Schema(
     },
     kycStatus: {
       type: String,
-      enum: ["Not Submitted", "Pending","Approved", "Partially Verified", "Verified"],
+      enum: ["Not Submitted", "Pending","Approved", "Partially Verified", "Verified","Rejected"],
       default: "Not Submitted",
     },
     loan: {
