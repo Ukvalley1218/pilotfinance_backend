@@ -116,7 +116,7 @@ export const submitKycDocuments = async (req, res) => {
 };
 
 
-
+student.status = "Pending";
     student.kycStatus = "Pending";
 
     await student.save();
