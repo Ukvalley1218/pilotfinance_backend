@@ -639,30 +639,76 @@ export const verifyStudent = async (req, res) => {
     const { studentId } = req.params;
     const { status, kycStatus } = req.body;
 
-    const updatedStudent = await Student.findByIdAndUpdate(
-      studentId,
-      {
-        $set: {
-          status: status || "Approved",
-          kycStatus: kycStatus || "Approved",
-        },
-      },
-      { new: true },
-    );
+    if (!mongoose.Types.ObjectId.isValid(studentId)) {
+      return res.status(400).json({
+        success: false,
+        msg: "Invalid student ID",
+      });
+    }
 
-    if (!updatedStudent) return res.status(404).json({ success: false });
+    const student = await Student.findById(studentId);
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        msg: "Student not found",
+      });
+    }
+
+    // 🚨 BUSINESS RULE:
+    // If KYC is still Pending → cannot verify
+    if (student.kycStatus === "Not Submitted") {
+      return res.status(400).json({
+        success: false,
+        msg: "Student KYC is still Not Submitted. Verification not allowed.",
+      });
+    }
+
+    // Optional: Prevent double approval
+    if (student.status === "Approved") {
+      return res.status(400).json({
+        success: false,
+        msg: "Student is already approved.",
+      });
+    }
+
+    // Optional: Allow only Approved/Rejected values
+    const allowedStatus = ["Approved", "Rejected"];
+    if (status && !allowedStatus.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        msg: "Invalid status value.",
+      });
+    }
+
+    // ✅ Update student
+    student.status = status || "Approved";
+    if (kycStatus) student.kycStatus = kycStatus;
+
+    await student.save();
 
     await logPartnerActivity(
       req.user.id,
       "Verification Complete",
-      `Verified ${updatedStudent.name}`,
-      "Student",
+      `Verified ${student.name}`,
+      "Student"
     );
-    res.status(200).json({ success: true, data: updatedStudent });
+
+    return res.status(200).json({
+      success: true,
+      msg: "Student verified successfully.",
+      data: student,
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false });
+    console.error("Verify Student Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Verification failed",
+    });
   }
 };
+
 
 export const addStudentByPartner = async (req, res) => {
   try {
@@ -705,7 +751,7 @@ export const addStudentByPartner = async (req, res) => {
       address,
       referredBy: partnerId,
       status: "Pending",
-      kycStatus: "Pending",
+     
     });
 
     // ✅ Update partner record
