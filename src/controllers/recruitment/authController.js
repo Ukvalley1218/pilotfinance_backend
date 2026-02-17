@@ -38,13 +38,23 @@ export const getMe = async (req, res) => {
 export const registerPartner = async (req, res) => {
   try {
     const { fullName, email, password, companyName, phone } = req.body;
+
     if (!fullName || !email || !password) {
-      return res.status(400).json({ msg: "Required fields missing" });
+      return res.status(400).json({
+        success: false,
+        msg: "Full Name, Email and Password are required.",
+      });
     }
+
     const cleanEmail = email.toLowerCase().trim();
-    let userExists = await User.findOne({ email: cleanEmail });
-    if (userExists)
-      return res.status(400).json({ msg: "Email already registered" });
+
+    const userExists = await User.findOne({ email: cleanEmail });
+    if (userExists) {
+      return res.status(409).json({
+        success: false,
+        msg: "This email is already registered.",
+      });
+    }
 
     const user = new User({
       fullName,
@@ -54,30 +64,67 @@ export const registerPartner = async (req, res) => {
       companyName: companyName || "Pending",
       role: "Partner",
     });
+
     await user.save();
 
     await logPartnerActivity(
       user._id,
       "Account Created",
       "Partner registered",
-      "System",
+      "System"
     );
 
     const token = generateToken(user._id);
+
     return res.status(201).json({
       success: true,
+      msg: "Partner registered successfully.",
       token,
-      user: { id: user._id, fullName: user.fullName, role: user.role },
+      user: {
+        id: user._id,
+        fullName: user.fullName,
+        role: user.role,
+      },
     });
+
   } catch (err) {
-    return res.status(500).json({ msg: "Registration failed" });
+    console.error("Register Partner Error:", err);
+
+    if (err.name === "ValidationError") {
+      const errors = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({
+        success: false,
+        msg: errors.join(", "),
+      });
+    }
+
+    if (err.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        msg: "Duplicate email detected.",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      msg: "Registration failed. Please try again.",
+    });
   }
 };
+
 
 // --- 3. UPDATE PARTNER PROFILE ---
 export const updatePartnerProfile = async (req, res) => {
   try {
-    const partnerId = req.user.id;
+    const partnerId = req.user?.id;
+
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        msg: "Unauthorized access.",
+      });
+    }
+
     const {
       agencyName,
       businessType,
@@ -90,8 +137,8 @@ export const updatePartnerProfile = async (req, res) => {
     } = req.body;
 
     const files = req.files || {};
-    const getFilePath = (fieldName) =>
-      files[fieldName] ? files[fieldName][0].path : undefined;
+    const getFilePath = (field) =>
+      files[field] ? files[field][0].path : undefined;
 
     const updateData = {
       companyName: agencyName,
@@ -115,57 +162,38 @@ export const updatePartnerProfile = async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(
       partnerId,
       { $set: updateData },
-      { new: true },
+      { new: true }
     );
 
-    await Partner.findOneAndUpdate(
-      { email: updatedUser.email },
-      {
-        name: updatedUser.fullName || contactPerson,
-        email: updatedUser.email,
-        phone: contact || updatedUser.phone,
-        businessName: agencyName || updatedUser.companyName,
-        businessType: "Agency",
-        address: address,
-        status: "Active",
-        experience: experience,
-        country: "Canada",
-      },
-      { upsert: true, new: true },
-    );
+    if (!updatedUser) {
+      return res.status(404).json({
+        success: false,
+        msg: "Partner not found.",
+      });
+    }
 
-    const kycFileMap = [
-      { field: "regCert", label: "Business Registration Certificate" },
-      { field: "gstCert", label: "GST Registration" },
-      { field: "idProof", label: "Identity Proof" },
-      { field: "mou", label: "Signed MOU" },
-    ];
-
-    const documentEntries = [];
-    kycFileMap.forEach((item) => {
-      const path = getFilePath(item.field);
-      if (path) {
-        documentEntries.push({
-          name: `${agencyName || "Partner"} - ${item.label}`,
-          category: "Partner Documents",
-          fileUrl: path,
-          uploadedBy: partnerId,
-        });
-      }
-    });
-
-    if (documentEntries.length > 0) await Document.insertMany(documentEntries);
     await logPartnerActivity(
       partnerId,
       "KYC Submitted",
-      "Uploaded docs",
-      "Document",
+      "Documents uploaded",
+      "Document"
     );
-    return res.status(200).json({ success: true, user: updatedUser });
+
+    return res.status(200).json({
+      success: true,
+      msg: "Profile updated successfully. KYC submitted for review.",
+      user: updatedUser,
+    });
+
   } catch (err) {
-    return res.status(500).json({ success: false, msg: "Server error" });
+    console.error("Update Profile Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to update profile.",
+    });
   }
 };
+
 
 // --- 4. GET UNLINKED STUDENTS ---
 export const getAvailableStudents = async (req, res) => {
@@ -173,77 +201,129 @@ export const getAvailableStudents = async (req, res) => {
     const availableStudents = await Student.find({
       referredBy: { $exists: false },
     }).select(
-      "name email phone course uni requestedAmount status kycStatus country",
+      "name email phone course uni requestedAmount status kycStatus country"
     );
 
-    res.status(200).json({ success: true, data: availableStudents });
+    return res.status(200).json({
+      success: true,
+      count: availableStudents.length,
+      data: availableStudents,
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, msg: "Failed to fetch repository" });
+    console.error("Fetch Students Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to fetch available students.",
+    });
   }
 };
+
 
 // --- 5. LINK STUDENT TO PARTNER ---
 export const linkStudentToPartner = async (req, res) => {
   try {
     const { studentId } = req.body;
-    const partnerId = req.user.id;
-    if (!studentId) return res.status(400).json({ msg: "Target ID required" });
+    const partnerId = req.user?.id;
 
-    const student = await Student.findByIdAndUpdate(
-      studentId,
-      { referredBy: partnerId },
-      { new: true },
-    );
-    if (student.referredBy)
-      return res.status(400).json({ msg: "Student already linked" });
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        msg: "Student ID is required.",
+      });
+    }
+
+    const student = await Student.findById(studentId);
+
+    if (!student) {
+      return res.status(404).json({
+        success: false,
+        msg: "Student not found.",
+      });
+    }
+
+    if (student.referredBy) {
+      return res.status(409).json({
+        success: false,
+        msg: "Student is already linked to a partner.",
+      });
+    }
+
+    student.referredBy = partnerId;
+    await student.save();
 
     await User.findByIdAndUpdate(partnerId, {
       $addToSet: { referredStudents: student._id },
     });
+
     await logPartnerActivity(
       partnerId,
-      "User Linked",
+      "Student Linked",
       `Linked ${student.name}`,
-      "Student",
+      "Student"
     );
-    res.status(200).json({ success: true, msg: "User added successfully" });
+
+    return res.status(200).json({
+      success: true,
+      msg: "Student linked successfully.",
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, msg: "Linking failed" });
+    console.error("Link Student Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to link student.",
+    });
   }
 };
+
 
 // --- 6. GET PARTNER SPECIFIC LOAN LEDGER (STRICT ISOLATION) ---
 export const getPartnerLoans = async (req, res) => {
   try {
     const { studentId } = req.query;
+    const partnerId = req.user?.id;
+
+    if (!partnerId) {
+      return res.status(401).json({
+        success: false,
+        msg: "Unauthorized access.",
+      });
+    }
+
     let query = {};
 
     if (studentId) {
-      /**
-       * CRITICAL FIX:
-       * Filter strictly by the unique application ID.
-       * Prevents old completed loans from overwriting the status of new ones.
-       */
-      query = { studentId: studentId };
+      query = { studentId };
     } else {
-      const partnerId = req.user.id;
-
       const partnerStudents = await Student.find({
         referredBy: partnerId,
       }).select("_id");
-      const studentIds = partnerStudents.map((s) => s._id);
+
+      const studentIds = partnerStudents.map(s => s._id);
 
       query = { studentId: { $in: studentIds } };
     }
 
-    const myLoans = await Loan.find(query)
+    const loans = await Loan.find(query)
       .populate("studentId", "name email phone")
       .sort({ createdAt: -1 });
-    res.status(200).json({ success: true, data: myLoans });
+
+    return res.status(200).json({
+      success: true,
+      count: loans.length,
+      data: loans,
+    });
+
   } catch (err) {
-    res.status(500).json({ success: false, msg: "Error fetching ledger" });
+    console.error("Fetch Loans Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Error fetching loan ledger.",
+    });
   }
 };
+
 
 // --- 7. GET REFERRED STUDENTS ---
 export const getReferredStudents = async (req, res) => {
@@ -678,79 +758,116 @@ export const addStudentByPartner = async (req, res) => {
 
 // --- 19. DELETE STUDENT (PARTNER CONTROLLED) ---
 export const deleteStudentByPartner = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const partnerId = req.user.id;
+    const partnerId = req.user?.id;
     const { studentId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(studentId)) {
+      return res.status(400).json({
+        success: false,
+        msg: "Invalid student ID",
+      });
+    }
 
     const student = await Student.findOne({
       _id: studentId,
       referredBy: partnerId,
-    });
+    }).session(session);
 
     if (!student) {
-      return res.status(404).json({ success: false, msg: "Student not found" });
+      return res.status(404).json({
+        success: false,
+        msg: "Student not found or not authorized",
+      });
     }
 
-    // Remove student reference from partner
-    await User.findByIdAndUpdate(partnerId, {
-      $pull: { referredStudents: student._id },
-    });
+    await User.findByIdAndUpdate(
+      partnerId,
+      { $pull: { referredStudents: student._id } },
+      { session }
+    );
 
-    // Remove related loans & transactions (optional safety cleanup)
-    await Loan.deleteMany({ studentId: student._id });
-    await Transaction.deleteMany({ studentId: student._id });
+    await Loan.deleteMany({ studentId: student._id }).session(session);
+    await Transaction.deleteMany({ studentId: student._id }).session(session);
 
-    await student.deleteOne();
+    await student.deleteOne({ session });
+
+    await session.commitTransaction();
+    session.endSession();
 
     await logPartnerActivity(
       partnerId,
       "Student Deleted",
       `Deleted ${student.name}`,
-      "Student",
+      "Student"
     );
 
-    res
-      .status(200)
-      .json({ success: true, msg: "Student deleted successfully" });
+    return res.status(200).json({
+      success: true,
+      msg: "Student deleted successfully",
+    });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, msg: "Delete failed" });
+    await session.abortTransaction();
+    session.endSession();
+    console.error("Delete Student Error:", err);
+
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to delete student",
+    });
   }
 };
+
 
 export const getLoanWithStudentById = async (req, res) => {
   try {
-    const { id } = req.params; // ✅ matches route
+    const { id } = req.params;
+    const partnerId = req.user?.id;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid loan ID" });
+      return res.status(400).json({
+        success: false,
+        msg: "Invalid loan ID",
+      });
     }
 
     const loan = await Loan.findById(id)
-      .populate({
-        path: "studentId",
-        select: "-password -otpCode -otpExpires",
-        populate: [
-          { path: "userId", select: "fullName email role" },
-          { path: "referredBy", select: "fullName email" },
-        ],
-      })
+      .populate("studentId")
       .populate("partnerId", "fullName email role");
 
     if (!loan) {
-      return res.status(404).json({ message: "Loan not found" });
+      return res.status(404).json({
+        success: false,
+        msg: "Loan not found",
+      });
     }
 
-    res.status(200).json({
+    // 🔐 Ensure partner owns this student
+    if (loan.studentId.referredBy?.toString() !== partnerId) {
+      return res.status(403).json({
+        success: false,
+        msg: "Access denied",
+      });
+    }
+
+    return res.status(200).json({
       success: true,
-      loan,
-      student: loan.studentId,
+      data: loan,
     });
-  } catch (error) {
-    console.error("❌ Error fetching loan by ID:", error);
-    res.status(500).json({ message: "Server error" });
+
+  } catch (err) {
+    console.error("Fetch Loan Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to fetch loan",
+    });
   }
 };
+
 
 // --- 18. PARTNER REJECT LOAN ---
 export const rejectStudentLoan = async (req, res) => {
@@ -950,75 +1067,83 @@ export const getMyWithdrawals = async (req, res) => {
 export const getWalletSummary = async (req, res) => {
   try {
     if (req.user.role !== "Partner") {
-      return res.status(403).json({ msg: "Only partners allowed" });
+      return res.status(403).json({
+        success: false,
+        msg: "Only partners allowed",
+      });
     }
 
-    const partnerId = req.user.id;
+    const partnerId = new mongoose.Types.ObjectId(req.user.id);
 
-    // 1️⃣ Calculate transaction balance
-    const result = await Transaction.aggregate([
-      {
-        $match: {
-          userId: new mongoose.Types.ObjectId(partnerId),
-          status: "Completed",
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          credits: {
-            $sum: {
-              $cond: [{ $eq: ["$type", "Credit"] }, "$amount", 0],
-            },
-          },
-          debits: {
-            $sum: {
-              $cond: [{ $eq: ["$type", "Debit"] }, "$amount", 0],
-            },
+    // 🔥 Parallel execution
+    const [transactionResult, withdrawalResult] = await Promise.all([
+
+      Transaction.aggregate([
+        {
+          $match: {
+            userId: partnerId,
+            status: "Completed",
           },
         },
-      },
+        {
+          $group: {
+            _id: null,
+            credits: {
+              $sum: {
+                $cond: [{ $eq: ["$type", "Credit"] }, "$amount", 0],
+              },
+            },
+            debits: {
+              $sum: {
+                $cond: [{ $eq: ["$type", "Debit"] }, "$amount", 0],
+              },
+            },
+          },
+        },
+      ]),
+
+      withdrawalModel.aggregate([
+        {
+          $match: {
+            partnerId,
+            status: "Pending",
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalPending: { $sum: "$amountRequested" },
+          },
+        },
+      ]),
     ]);
 
-    const totalCredits = result[0]?.credits || 0;
-    const totalDebits = result[0]?.debits || 0;
+    const totalCredits = transactionResult[0]?.credits || 0;
+    const totalDebits = transactionResult[0]?.debits || 0;
+    const totalPending = withdrawalResult[0]?.totalPending || 0;
 
-    // 2️⃣ Get pending withdrawals
-    const pendingWithdrawals = await withdrawalModel.aggregate([
-      {
-        $match: {
-          partnerId: new mongoose.Types.ObjectId(partnerId),
-          status: "Pending",
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalPending: { $sum: "$amountRequested" },
-        },
-      },
-    ]);
-
-    const totalPending = pendingWithdrawals[0]?.totalPending || 0;
-
-    // 3️⃣ Calculate available balance
     const actualBalance = totalCredits - totalDebits;
     const availableBalance = actualBalance - totalPending;
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       wallet: {
         totalCredits,
         totalDebits,
         pendingWithdrawals: totalPending,
-        actualBalance,      // before hold
-        availableBalance,   // usable balance
+        actualBalance,
+        availableBalance,
       },
     });
+
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: "Wallet summary failed" });
+    console.error("Wallet Summary Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Wallet summary failed",
+    });
   }
 };
+
 
 
