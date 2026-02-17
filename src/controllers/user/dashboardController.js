@@ -10,7 +10,8 @@ import Transaction from "../../models/transaction.model.js";
 export const getDashboardData = async (req, res) => {
   try {
     const studentId = req.user.id;
-
+    console.log(studentId);
+    
     const [student, loans, dbTransactions] = await Promise.all([
       Student.findById(studentId),
       Loan.find({ studentId }).sort({ createdAt: -1 }),
@@ -31,24 +32,25 @@ export const getDashboardData = async (req, res) => {
       });
     }
 
-    let totalDisbursedAmount = 0;
-    let totalOriginalWithInterest = 0;
-    let totalPaid = 0;
+    let grandTotalRemainingDebt = 0;
+    let grandTotalOriginalDebt = 0;
+    let grandTotalPaid = 0;
+    let remaining;
 
     const processedLoans = loans.map((loan) => {
+      if(loan.status === "Disbursed"){
+       remaining = loan.totalAmount || 0;
 
-      const isDisbursed = ["Disbursed", "Active", "Completed"].includes(loan.status);
-
-      const principal = loan.principalRequested || 0;
+      }
       const paid = loan.paidAmount || 0;
-      const totalWithInterest = loan.totalWithInterest || 0;
-      const remaining = Math.max(totalWithInterest - paid, 0);
+      const original = loan.totalWithInterest || remaining + paid;
 
-      // ✅ Only count DISBURSED loans
-      if (isDisbursed) {
-        totalDisbursedAmount += principal;
-        totalOriginalWithInterest += totalWithInterest;
-        totalPaid += paid;
+      const isLive = ["Approved", "Active", "Disbursed", "Completed"].includes(loan.status);
+
+      if (isLive) {
+        grandTotalRemainingDebt += remaining;
+        grandTotalPaid += paid;
+        grandTotalOriginalDebt += original;
       }
 
       return {
@@ -57,22 +59,18 @@ export const getDashboardData = async (req, res) => {
         loanType: loan.title || `${loan.category} Loan`,
         category: loan.category,
         status: loan.status,
-        disbursedAmount: principal,
-        remainingAmount: remaining,
-        totalWithInterest,
+        amount: remaining,
+        totalWithInterest: original,
         paidAmount: paid,
         monthlyPayment: loan.monthlyPayment,
-        progress:
-          totalWithInterest > 0
-            ? Math.round((paid / totalWithInterest) * 100)
-            : 0,
+        progress: original > 0 ? Math.round((paid / original) * 100) : 0,
         period: loan.period,
       };
     });
 
     const overallProgress =
-      totalOriginalWithInterest > 0
-        ? Math.round((totalPaid / totalOriginalWithInterest) * 100)
+      grandTotalOriginalDebt > 0
+        ? Math.round((grandTotalPaid / grandTotalOriginalDebt) * 100)
         : 0;
 
     const transactionList = dbTransactions.map((txn) => ({
@@ -87,11 +85,11 @@ export const getDashboardData = async (req, res) => {
     res.status(200).json({
       success: true,
       data: {
-        totalLoanAmount: totalDisbursedAmount, // ✅ FIXED
+        totalLoanAmount: grandTotalRemainingDebt,
+
+        remainingamount:loans.reduce((sum, loan) => sum + (loan.totalAmount || 0), 0),
         overallProgress,
-        activeLoansCount: processedLoans.filter((l) =>
-          ["Disbursed", "Active"].includes(l.status)
-        ).length,
+        activeLoansCount: processedLoans.filter((l) => l.status !== "Pending").length,
         payoffDate: student.updatedAt
           ? new Date(student.updatedAt).toLocaleDateString("en-GB")
           : "N/A",
@@ -99,13 +97,11 @@ export const getDashboardData = async (req, res) => {
         transactions: transactionList,
       },
     });
-
   } catch (err) {
     console.error("Dashboard Sync Error:", err);
     res.status(500).json({ success: false, msg: "Server Error" });
   }
 };
-
 
 // --- 2. GET NOTIFICATIONS ---
 /**

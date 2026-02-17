@@ -183,6 +183,7 @@ export const forgotPassword = async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     student.otpCode = otp;
     student.otpExpires = new Date(Date.now() + 10 * 60000);
+    console.log("Generated OTP for password reset:", otp);
     await student.save();
 
     await transporter.sendMail({
