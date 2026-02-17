@@ -13,6 +13,7 @@ import { login as sharedLogin } from "../user/authController.js";
 import withdrawalModel from "../../models/withdrawal.model.js";
 import bcrypt from "bcryptjs";
 import crypto from "crypto";
+import transporter from "../../utils/mail.js";
 
 
 // --- HELPER: LOG ACTIVITY ---
@@ -163,6 +164,211 @@ export const login = async (req, res) => {
   } catch (err) {
     console.error("Partner Login Error:", err);
     return res.status(500).json({ msg: "Login failed" });
+  }
+};
+
+
+export const sendPartnerResetOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        msg: "Email is required",
+      });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({
+      email: cleanEmail,
+      role: "Partner",
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        msg: "Partner account not found",
+      });
+    }
+
+    // 🔢 Generate 6 digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // 🔐 Hash OTP before saving
+    const hashedOtp = crypto
+      .createHash("sha256")
+      .update(otp)
+      .digest("hex");
+
+    user.otpCode = hashedOtp;
+    user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
+    await user.save({ validateBeforeSave: false });
+
+    // 🔥 Send Email Here
+     // 2️⃣ Try sending email (non-blocking logic)
+        try {
+          await transporter.sendMail({
+            from: `"Pilot Finance" <${process.env.EMAIL_USER}>`,
+            to: user.email,
+            subject: "Verification Code",
+            html: `<h2>Your verification code is: ${otp}</h2>`,
+          });
+        } catch (mailError) {
+          console.error("EMAIL FAILED BUT OTP SAVED:", mailError.message);
+        }
+    console.log("OTP:", otp);
+
+    return res.status(200).json({
+      success: true,
+      msg: "OTP sent to registered email",
+    });
+
+  } catch (err) {
+    console.error("Send OTP Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Failed to send OTP",
+    });
+  }
+};
+
+export const verifyPartnerResetOtp = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({
+        success: false,
+        msg: "Email and OTP are required",
+      });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({
+      email: cleanEmail,
+      role: "Partner",
+    });
+
+    if (!user || !user.otpCode || !user.otpExpires) {
+      return res.status(400).json({
+        success: false,
+        msg: "Invalid request",
+      });
+    }
+
+    if (user.otpExpires < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        msg: "OTP expired",
+      });
+    }
+
+    const hashedOtp = crypto
+      .createHash("sha256")
+      .update(otp)
+      .digest("hex");
+
+    if (hashedOtp !== user.otpCode) {
+      return res.status(400).json({
+        success: false,
+        msg: "Invalid OTP",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      msg: "OTP verified successfully",
+    });
+
+  } catch (err) {
+    console.error("Verify OTP Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "OTP verification failed",
+    });
+  }
+};
+
+export const resetPartnerPasswordWithOtp = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        msg: "All fields are required",
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        success: false,
+        msg: "Password must be at least 6 characters",
+      });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    const user = await User.findOne({
+      email: cleanEmail,
+      role: "Partner",
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        msg: "User not found",
+      });
+    }
+
+    if (user.otpExpires < Date.now()) {
+      return res.status(400).json({
+        success: false,
+        msg: "OTP expired",
+      });
+    }
+
+    const hashedOtp = crypto
+      .createHash("sha256")
+      .update(otp)
+      .digest("hex");
+
+    if (hashedOtp !== user.otpCode) {
+      return res.status(400).json({
+        success: false,
+        msg: "Invalid OTP",
+      });
+    }
+
+    // ✅ Update password
+    user.password = newPassword; // hashed by pre-save hook
+    user.otpCode = undefined;
+    user.otpExpires = undefined;
+
+    await user.save();
+
+    await logPartnerActivity(
+      user._id,
+      "Password Reset",
+      "Password reset via OTP",
+      "System"
+    );
+
+    return res.status(200).json({
+      success: true,
+      msg: "Password reset successful",
+    });
+
+  } catch (err) {
+    console.error("Reset Password Error:", err);
+    return res.status(500).json({
+      success: false,
+      msg: "Password reset failed",
+    });
   }
 };
 

@@ -34,6 +34,9 @@ import {
   searchLoansByStudentName,
   searchMyStudents,
   dashboardSearch,
+  sendPartnerResetOtp,
+  verifyPartnerResetOtp,
+  resetPartnerPasswordWithOtp,
  
 } from "../../controllers/recruitment/authController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
@@ -79,6 +82,10 @@ const upload = multer({
 // ---------- RECRUITMENT AUTH ROUTES (Public) ----------
 router.post("/register", registerPartner);
 router.post("/login", login);
+router.post("/forgot-password/send-otp", sendPartnerResetOtp);
+router.post("/forgot-password/verify-otp", verifyPartnerResetOtp);
+router.post("/forgot-password/reset", resetPartnerPasswordWithOtp);
+
 
 // ---------- RECRUITMENT PRIVATE ROUTES (Requires Token) ----------
 
