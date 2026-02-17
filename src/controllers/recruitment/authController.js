@@ -1179,7 +1179,7 @@ export const getWalletSummary = async (req, res) => {
       if (item._id === "Rejected") totalRejected = item.totalAmount;
     });
 
-    const actualBalance = totalCredits - totalDebits;
+    const actualBalance = totalCredits - totalWithdrawn;
     const availableBalance = actualBalance - totalPending;
 
     return res.status(200).json({
