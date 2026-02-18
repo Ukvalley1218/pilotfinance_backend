@@ -195,12 +195,12 @@ export const sendPartnerResetOtp = async (req, res) => {
 
     // 🔢 Generate 6 digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    console.log("Saving OTP:", otp);  //remove logs later
 
   
 
-   
+user.otpCode = otp;   
     user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
-    console.log("Saving OTP:", otp);  //remove logs later
 
     await user.save({ validateBeforeSave: false });
 
