@@ -87,7 +87,7 @@ export const getDashboardData = async (req, res) => {
       data: {
         totalLoanAmount: grandTotalRemainingDebt,
 
-        remainingamount:loans.reduce((sum, loan) => sum + (loan.totalAmount || 0), 0),
+        // remainingamount:loans.reduce((sum, loan) => sum + (loan.totalAmount || 0), 0),
         overallProgress,
         activeLoansCount: processedLoans.filter((l) => l.status !== "Pending").length,
         payoffDate: student.updatedAt

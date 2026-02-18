@@ -196,14 +196,11 @@ export const sendPartnerResetOtp = async (req, res) => {
     // 🔢 Generate 6 digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // 🔐 Hash OTP before saving
-    const hashedOtp = crypto
-      .createHash("sha256")
-      .update(otp)
-      .digest("hex");
+  
 
-    user.otpCode = hashedOtp;
+   
     user.otpExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+    console.log("Saving OTP:", otp);  //remove logs later
 
     await user.save({ validateBeforeSave: false });
 

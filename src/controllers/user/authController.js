@@ -202,6 +202,7 @@ export const forgotPassword = async (req, res) => {
 export const resetPassword = async (req, res) => {
   try {
     const { email, otp, newPassword } = req.body;
+    const cleanEmail = email.toLowerCase().trim();
     const student = await Student.findOne({
       email: cleanEmail,
       otpCode: otp,
