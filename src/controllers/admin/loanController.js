@@ -196,11 +196,7 @@ if (student?.referredBy && commissionConfig) {
     commissionAmount = commissionConfig.fixedAmount;
   }
 
-  if (commissionConfig.type === "both") {
-    commissionAmount =
-      (P * commissionConfig.percentage) / 100 +
-      commissionConfig.fixedAmount;
-  }
+  console.log(`💰 Calculated Commission for partner ${partner.fullName}: ${commissionAmount}`);
 
   if (commissionAmount > 0) {
     await Transaction.create({

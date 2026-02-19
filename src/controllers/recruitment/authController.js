@@ -15,7 +15,6 @@ import bcrypt from "bcryptjs";
 import crypto from "crypto";
 import transporter from "../../utils/mail.js";
 
-
 // --- HELPER: LOG ACTIVITY ---
 const logPartnerActivity = async (partnerId, action, details, category) => {
   try {
@@ -73,7 +72,7 @@ export const registerPartner = async (req, res) => {
       user._id,
       "Account Created",
       "Partner registered",
-      "System"
+      "System",
     );
 
     const token = generateToken(user._id);
@@ -88,12 +87,11 @@ export const registerPartner = async (req, res) => {
         role: user.role,
       },
     });
-
   } catch (err) {
     console.error("Register Partner Error:", err);
 
     if (err.name === "ValidationError") {
-      const errors = Object.values(err.errors).map(e => e.message);
+      const errors = Object.values(err.errors).map((e) => e.message);
       return res.status(400).json({
         success: false,
         msg: errors.join(", "),
@@ -167,7 +165,6 @@ export const login = async (req, res) => {
   }
 };
 
-
 export const sendPartnerResetOtp = async (req, res) => {
   try {
     const { email } = req.body;
@@ -207,7 +204,6 @@ export const sendPartnerResetOtp = async (req, res) => {
       success: true,
       msg: "OTP sent successfully",
     });
-
   } catch (err) {
     console.error(err);
     return res.status(500).json({
@@ -216,7 +212,6 @@ export const sendPartnerResetOtp = async (req, res) => {
     });
   }
 };
-
 
 export const verifyPartnerResetOtp = async (req, res) => {
   try {
@@ -255,7 +250,6 @@ export const verifyPartnerResetOtp = async (req, res) => {
       success: true,
       msg: "OTP verified successfully",
     });
-
   } catch (err) {
     return res.status(500).json({
       success: false,
@@ -263,7 +257,6 @@ export const verifyPartnerResetOtp = async (req, res) => {
     });
   }
 };
-
 
 export const resetPartnerPasswordWithOtp = async (req, res) => {
   try {
@@ -314,7 +307,6 @@ export const resetPartnerPasswordWithOtp = async (req, res) => {
       success: true,
       msg: "Password reset successful",
     });
-
   } catch (err) {
     return res.status(500).json({
       success: false,
@@ -322,9 +314,6 @@ export const resetPartnerPasswordWithOtp = async (req, res) => {
     });
   }
 };
-
-
-
 
 // --- 3. UPDATE PARTNER PROFILE ---
 export const updatePartnerProfile = async (req, res) => {
@@ -375,7 +364,7 @@ export const updatePartnerProfile = async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(
       partnerId,
       { $set: updateData },
-      { new: true }
+      { new: true },
     );
 
     if (!updatedUser) {
@@ -389,7 +378,7 @@ export const updatePartnerProfile = async (req, res) => {
       partnerId,
       "KYC Submitted",
       "Documents uploaded",
-      "Document"
+      "Document",
     );
 
     return res.status(200).json({
@@ -397,7 +386,6 @@ export const updatePartnerProfile = async (req, res) => {
       msg: "Profile updated successfully. KYC submitted for review.",
       user: updatedUser,
     });
-
   } catch (err) {
     console.error("Update Profile Error:", err);
     return res.status(500).json({
@@ -407,14 +395,13 @@ export const updatePartnerProfile = async (req, res) => {
   }
 };
 
-
 // --- 4. GET UNLINKED STUDENTS ---
 export const getAvailableStudents = async (req, res) => {
   try {
     const availableStudents = await Student.find({
       referredBy: { $exists: false },
     }).select(
-      "name email phone course uni requestedAmount status kycStatus country"
+      "name email phone course uni requestedAmount status kycStatus country",
     );
 
     return res.status(200).json({
@@ -422,7 +409,6 @@ export const getAvailableStudents = async (req, res) => {
       count: availableStudents.length,
       data: availableStudents,
     });
-
   } catch (err) {
     console.error("Fetch Students Error:", err);
     return res.status(500).json({
@@ -431,7 +417,6 @@ export const getAvailableStudents = async (req, res) => {
     });
   }
 };
-
 
 // --- 5. LINK STUDENT TO PARTNER ---
 export const linkStudentToPartner = async (req, res) => {
@@ -473,14 +458,13 @@ export const linkStudentToPartner = async (req, res) => {
       partnerId,
       "Student Linked",
       `Linked ${student.name}`,
-      "Student"
+      "Student",
     );
 
     return res.status(200).json({
       success: true,
       msg: "Student linked successfully.",
     });
-
   } catch (err) {
     console.error("Link Student Error:", err);
     return res.status(500).json({
@@ -489,7 +473,6 @@ export const linkStudentToPartner = async (req, res) => {
     });
   }
 };
-
 
 // --- 6. GET PARTNER SPECIFIC LOAN LEDGER (STRICT ISOLATION) ---
 export const getPartnerLoans = async (req, res) => {
@@ -513,7 +496,7 @@ export const getPartnerLoans = async (req, res) => {
         referredBy: partnerId,
       }).select("_id");
 
-      const studentIds = partnerStudents.map(s => s._id);
+      const studentIds = partnerStudents.map((s) => s._id);
 
       query = { studentId: { $in: studentIds } };
     }
@@ -527,7 +510,6 @@ export const getPartnerLoans = async (req, res) => {
       count: loans.length,
       data: loans,
     });
-
   } catch (err) {
     console.error("Fetch Loans Error:", err);
     return res.status(500).json({
@@ -536,7 +518,6 @@ export const getPartnerLoans = async (req, res) => {
     });
   }
 };
-
 
 // --- 7. GET REFERRED STUDENTS ---
 export const getReferredStudents = async (req, res) => {
@@ -572,12 +553,31 @@ export const getReferredStudents = async (req, res) => {
 export const getDashboardStats = async (req, res) => {
   try {
     const partnerId = req.user.id;
-    const students = await Student.find({ referredBy: partnerId });
 
+    // 1️⃣ Get referred students
+    const students = await Student.find({ referredBy: partnerId });
     const studentIds = students.map((s) => s._id);
-    const referredLoans = await Loan.find({ studentId: { $in: studentIds } })
+
+    // 2️⃣ Get referred loans
+    const referredLoans = await Loan.find({
+      studentId: { $in: studentIds },
+    })
       .sort({ createdAt: -1 })
       .populate("studentId", "name");
+
+    // 3️⃣ Get Commission Transactions ONLY
+    const commissionTransactions = await Transaction.find({
+      userId: partnerId,
+      type: "Credit",
+      status: "Completed",
+      desc: "Commission for Education Loan", // 👈 filters only commission
+    });
+
+    // 4️⃣ Calculate total commission earned
+    const totalCommissionEarned = commissionTransactions.reduce(
+      (sum, txn) => sum + txn.amount,
+      0,
+    );
 
     return res.status(200).json({
       success: true,
@@ -590,10 +590,16 @@ export const getDashboardStats = async (req, res) => {
         ).length,
         pendingLoans: referredLoans.filter((l) => l.status === "Pending")
           .length,
+
+        // ✅ Commission Data Added
+        totalCommissionEarned,
+        commissionTransactionsCount: commissionTransactions.length,
+
         recentApplications: referredLoans,
       },
     });
   } catch (err) {
+    console.error(err);
     return res.status(500).json({ msg: "Failed to fetch stats" });
   }
 };
@@ -708,7 +714,6 @@ export const getAllPartners = async (req, res) => {
   }
 };
 
-
 export const getStudentSignaturesForPartner = async (req, res) => {
   try {
     const { studentId } = req.params;
@@ -798,7 +803,7 @@ export const fundStudentLoan = async (req, res) => {
 export const verifyStudent = async (req, res) => {
   try {
     const { studentId } = req.params;
-    const { status, kycStatus,reason } = req.body;
+    const { status, kycStatus, reason } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(studentId)) {
       return res.status(400).json({
@@ -845,7 +850,7 @@ export const verifyStudent = async (req, res) => {
     // ✅ Update student
     student.status = status || "Approved";
     if (kycStatus) student.kycStatus = kycStatus;
-    if(reason) student.reason = reason;
+    if (reason) student.reason = reason;
 
     await student.save();
 
@@ -853,7 +858,7 @@ export const verifyStudent = async (req, res) => {
       req.user.id,
       "Verification Complete",
       `Verified ${student.name}`,
-      "Student"
+      "Student",
     );
 
     return res.status(200).json({
@@ -861,7 +866,6 @@ export const verifyStudent = async (req, res) => {
       msg: "Student verified successfully.",
       data: student,
     });
-
   } catch (err) {
     console.error("Verify Student Error:", err);
     return res.status(500).json({
@@ -870,7 +874,6 @@ export const verifyStudent = async (req, res) => {
     });
   }
 };
-
 
 export const addStudentByPartner = async (req, res) => {
   try {
@@ -913,7 +916,6 @@ export const addStudentByPartner = async (req, res) => {
       address,
       referredBy: partnerId,
       status: "Pending",
-     
     });
 
     // ✅ Update partner record
@@ -926,7 +928,7 @@ export const addStudentByPartner = async (req, res) => {
       partnerId,
       "Student Added",
       `Added ${name}`,
-      "Student"
+      "Student",
     );
 
     return res.status(201).json({
@@ -934,13 +936,12 @@ export const addStudentByPartner = async (req, res) => {
       msg: "Student added successfully.",
       student,
     });
-
   } catch (err) {
     console.error("Add Student Error:", err);
 
     // ✅ Mongoose validation error
     if (err.name === "ValidationError") {
-      const errors = Object.values(err.errors).map(e => e.message);
+      const errors = Object.values(err.errors).map((e) => e.message);
       return res.status(400).json({
         success: false,
         msg: errors.join(", "),
@@ -962,7 +963,6 @@ export const addStudentByPartner = async (req, res) => {
     });
   }
 };
-
 
 // --- 19. DELETE STUDENT (PARTNER CONTROLLED) ---
 export const deleteStudentByPartner = async (req, res) => {
@@ -995,7 +995,7 @@ export const deleteStudentByPartner = async (req, res) => {
     await User.findByIdAndUpdate(
       partnerId,
       { $pull: { referredStudents: student._id } },
-      { session }
+      { session },
     );
 
     await Loan.deleteMany({ studentId: student._id }).session(session);
@@ -1010,14 +1010,13 @@ export const deleteStudentByPartner = async (req, res) => {
       partnerId,
       "Student Deleted",
       `Deleted ${student.name}`,
-      "Student"
+      "Student",
     );
 
     return res.status(200).json({
       success: true,
       msg: "Student deleted successfully",
     });
-
   } catch (err) {
     await session.abortTransaction();
     session.endSession();
@@ -1029,7 +1028,6 @@ export const deleteStudentByPartner = async (req, res) => {
     });
   }
 };
-
 
 export const getLoanWithStudentById = async (req, res) => {
   try {
@@ -1066,7 +1064,6 @@ export const getLoanWithStudentById = async (req, res) => {
       success: true,
       data: loan,
     });
-
   } catch (err) {
     console.error("Fetch Loan Error:", err);
     return res.status(500).json({
@@ -1075,7 +1072,6 @@ export const getLoanWithStudentById = async (req, res) => {
     });
   }
 };
-
 
 // --- 18. PARTNER REJECT LOAN ---
 export const rejectStudentLoan = async (req, res) => {
@@ -1135,7 +1131,6 @@ export const rejectStudentLoan = async (req, res) => {
     return res.status(500).json({ success: false, msg: "Server error" });
   }
 };
-
 
 // --- PARTNER REQUEST WITHDRAW ---
 export const requestWithdrawal = async (req, res) => {
@@ -1213,7 +1208,6 @@ export const requestWithdrawal = async (req, res) => {
     res.status(500).json({ msg: "Withdrawal request failed" });
   }
 };
-
 
 export const creditPartnerWallet = async (req, res) => {
   try {
@@ -1302,7 +1296,7 @@ export const getMyWithdrawals = async (req, res) => {
         }
         return acc;
       },
-      { totalWithdrawn: 0, totalPending: 0, totalRejected: 0 }
+      { totalWithdrawn: 0, totalPending: 0, totalRejected: 0 },
     );
 
     return res.status(200).json({
@@ -1310,7 +1304,6 @@ export const getMyWithdrawals = async (req, res) => {
       summary,
       data: mergedHistory,
     });
-
   } catch (err) {
     console.error("Partner Withdrawals Error:", err);
     return res.status(500).json({
@@ -1319,7 +1312,6 @@ export const getMyWithdrawals = async (req, res) => {
     });
   }
 };
-
 
 export const getWalletSummary = async (req, res) => {
   try {
@@ -1332,11 +1324,7 @@ export const getWalletSummary = async (req, res) => {
 
     const partnerId = new mongoose.Types.ObjectId(req.user.id);
 
-    const [
-      transactionResult,
-      withdrawalStats
-    ] = await Promise.all([
-
+    const [transactionResult, withdrawalStats] = await Promise.all([
       // 1️⃣ Real Transactions
       Transaction.aggregate([
         {
@@ -1383,7 +1371,7 @@ export const getWalletSummary = async (req, res) => {
     let totalWithdrawn = 0;
     let totalRejected = 0;
 
-    withdrawalStats.forEach(item => {
+    withdrawalStats.forEach((item) => {
       if (item._id === "Pending") totalPending = item.totalAmount;
       if (item._id === "Completed") totalWithdrawn = item.totalAmount;
       if (item._id === "Rejected") totalRejected = item.totalAmount;
@@ -1397,14 +1385,13 @@ export const getWalletSummary = async (req, res) => {
       wallet: {
         totalCredits,
         totalDebits,
-        totalWithdrawn,     // Only completed withdrawals
-        totalRejected,      // For analytics only
+        totalWithdrawn, // Only completed withdrawals
+        totalRejected, // For analytics only
         pendingWithdrawals: totalPending,
         actualBalance,
         availableBalance,
       },
     });
-
   } catch (err) {
     console.error("Wallet Summary Error:", err);
     return res.status(500).json({
@@ -1414,11 +1401,7 @@ export const getWalletSummary = async (req, res) => {
   }
 };
 
-
-
-
-
-// search apis 
+// search apis
 export const searchLoansByStudentName = async (req, res) => {
   try {
     const partnerId = req.user?.id;
@@ -1437,7 +1420,7 @@ export const searchLoansByStudentName = async (req, res) => {
       name: { $regex: search, $options: "i" },
     }).select("_id name email phone");
 
-    const studentIds = students.map(s => s._id);
+    const studentIds = students.map((s) => s._id);
 
     if (studentIds.length === 0) {
       return res.status(200).json({
@@ -1460,7 +1443,6 @@ export const searchLoansByStudentName = async (req, res) => {
       count: loans.length,
       data: loans,
     });
-
   } catch (err) {
     console.error("Search Loans Error:", err);
     return res.status(500).json({
@@ -1493,7 +1475,6 @@ export const searchMyStudents = async (req, res) => {
       count: students.length,
       data: students,
     });
-
   } catch (err) {
     console.error("Search Students Error:", err);
     return res.status(500).json({
@@ -1527,7 +1508,7 @@ export const dashboardSearch = async (req, res) => {
       .limit(5)
       .lean();
 
-    const studentIds = students.map(s => s._id);
+    const studentIds = students.map((s) => s._id);
 
     // 2️⃣ Search Loans
     const loans = await Loan.find({
@@ -1545,7 +1526,6 @@ export const dashboardSearch = async (req, res) => {
         loans,
       },
     });
-
   } catch (err) {
     console.error("Dashboard Search Error:", err);
     return res.status(500).json({
