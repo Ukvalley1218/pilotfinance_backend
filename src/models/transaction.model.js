@@ -39,6 +39,8 @@ const transactionSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    stripePaymentIntentId: String,
+paymentMethod: String,
     status: {
       type: String,
       enum: ["Completed", "Pending", "Failed"],

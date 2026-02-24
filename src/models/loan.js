@@ -73,6 +73,12 @@ const loanSchema = new mongoose.Schema(
       type: Number, // percentage (e.g., 2.5)
       default: 2.5,
     },
+    amountPaid: { type: Number, default: 0 },
+paymentStatus: {
+  type: String,
+  enum: ["Pending", "Partial", "Paid"],
+  default: "Pending",
+},
 
     // --- TIMELINES ---
     period: {
@@ -127,6 +133,8 @@ const loanSchema = new mongoose.Schema(
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
     timestamps: true,
+
+    remainingAmount: { type: Number }
   },
 );
 

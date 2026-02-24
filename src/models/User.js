@@ -64,7 +64,14 @@ const userSchema = new mongoose.Schema(
   percentage: { type: Number, default: 0 },
   fixedAmount: { type: Number, default: 0 },
 },
-
+registrationPaymentStatus: {
+  type: String,
+  enum: ["Pending", "Paid"],
+  default: "Pending",
+},
+registrationPaymentIntentId: {
+  type: String,
+},
 
 
     referredStudents: [
