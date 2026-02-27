@@ -3,7 +3,7 @@ import Loan from "../../models/loan.js";
 import mongoose from "mongoose";
 import Transaction from "../../models/transaction.model.js";
 import User from "../../models/User.js";
-import CommissionSettings from "../../models/commissionSettings.model.js";
+import Settings from "../../models/Settings.model.js";
 
 /**
  * @desc Create Loan (Triggered from Partner/User Panel)
@@ -180,7 +180,7 @@ if (status === "Approved" && loan.status !== "Approved") {
     const partner = await User.findById(student.referredBy);
 
     if (partner && partner.commission) {
-      const commissionConfig = await CommissionSettings.findOne();
+      const commissionConfig = await Settings.findOne();
 
 if (student?.referredBy && commissionConfig) {
   const partner = await User.findById(student.referredBy);

@@ -4,7 +4,7 @@ import { Parser } from "json2csv";
 import { Student } from "../../models/student.model.js";
 import Transaction from "../../models/transaction.model.js";
 import withdrawalModel from "../../models/withdrawal.model.js";
-import CommissionSettings from "../../models/commissionSettings.model.js";
+import Settings from "../../models/Settings.model.js";
 
 import bcrypt from "bcryptjs";
 import { Notification } from "../../models/notification.model.js";
@@ -19,7 +19,7 @@ export const getGlobalCommission = async (req, res) => {
       return res.status(403).json({ msg: "Admin access required" });
     }
 
-    const settings = await CommissionSettings.findOne();
+    const settings = await Settings.findOne();
 
     return res.status(200).json({
       success: true,
@@ -70,10 +70,10 @@ export const setGlobalCommission = async (req, res) => {
     }
 
     // Only 1 global config
-    let settings = await CommissionSettings.findOne();
+    let settings = await Settings.findOne();
 
     if (!settings) {
-      settings = await CommissionSettings.create({
+      settings = await Settings.create({
         type,
         percentage: percentage || 0,
         fixedAmount: fixedAmount || 0,

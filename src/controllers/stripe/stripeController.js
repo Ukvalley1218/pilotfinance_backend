@@ -1,5 +1,16 @@
 import stripe from "../../services/stripe.service.js";
 import User from "../../models/User.js";
+import { generateToken } from "../../utils/generateToken.js";
+
+
+// --- HELPER: LOG ACTIVITY ---
+const logPartnerActivity = async (partnerId, action, details, category) => {
+  try {
+    await Activity.create({ partnerId, action, details, category });
+  } catch (err) {
+    console.error("Activity Log Error:", err);
+  }
+};
 
 // for create payment 
 export const createPartnerRegistrationPayment = async (req, res) => {
@@ -13,48 +24,72 @@ export const createPartnerRegistrationPayment = async (req, res) => {
     const cleanEmail = email.toLowerCase().trim();
 
     const existing = await User.findOne({ email: cleanEmail });
-    if (existing) {
-      return res.status(400).json({ msg: "Email already registered" });
+
+    if (existing && existing.registrationPaymentStatus === "Paid") {
+      return res.status(400).json({ msg: "Email already registered & paid" });
     }
 
-    // 1️⃣ Create partner in Pending mode
-    const partner = await User.create({
-      fullName,
-      email: cleanEmail,
-      password,
-      phone,
-      companyName,
-      role: "Partner",
-      status: "Inactive",
-      registrationPaymentStatus: "Pending",
-    });
+    let partner = existing;
 
-    // 2️⃣ Create Stripe PaymentIntent
-    const registrationFee = 500; // example fixed fee (CAD)
+    if (!partner) {
+      partner = await User.create({
+        fullName,
+        email: cleanEmail,
+        password,
+        phone,
+        companyName,
+        role: "Partner",
+        status: "Inactive",
+        registrationPaymentStatus: "Pending",
+      });
+    }
 
+    // 🔹 Fetch registration fee from Settings
+    const settings = await Settings.findOne({ isActive: true });
+
+    if (!settings || !settings.partnerregistrationfee) {
+      return res.status(400).json({
+        msg: "Partner registration fee not configured",
+      });
+    }
+
+    const registrationFee = settings.partnerregistrationfee;
+
+    // 🔹 Create Stripe Payment Intent
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: registrationFee * 100,
+      amount: registrationFee * 100, // convert to cents
       currency: "cad",
       metadata: {
         partnerId: partner._id.toString(),
         type: "PartnerRegistration",
       },
+      automatic_payment_methods: { enabled: true },
     });
 
-    // Save PaymentIntent ID
     partner.registrationPaymentIntentId = paymentIntent.id;
     await partner.save();
 
+    await logPartnerActivity(
+      partner._id,
+      "Account Created",
+      "Partner registered",
+      "System"
+    );
+
+    const token = generateToken(partner._id);
+
     res.status(200).json({
       success: true,
+      msg: "Partner registered successfully.",
+      token,
       clientSecret: paymentIntent.client_secret,
+      registrationFee,
     });
   } catch (err) {
-    console.error(err);
+    console.error("Partner Registration Payment Error:", err);
     res.status(500).json({ msg: "Registration payment failed" });
   }
 };
-
 
 // for webhook to confirm payment and update loan status
 export const stripeWebhook = async (req, res) => {
