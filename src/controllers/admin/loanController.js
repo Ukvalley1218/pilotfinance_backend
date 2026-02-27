@@ -222,6 +222,7 @@ if (student?.referredBy && commissionConfig) {
 
       loan.status = "Disbursed";
       loan.disbursementDate = new Date();
+      loan.remainingAmount = loan.totalAmount;
 
       const student = loan.studentId;
       const amount = loan.principalRequested;
