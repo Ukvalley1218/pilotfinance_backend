@@ -1,6 +1,7 @@
 import stripe from "../../services/stripe.service.js";
 import User from "../../models/User.js";
 import { generateToken } from "../../utils/generateToken.js";
+import Settings from "../../models/Settings.model.js";
 
 
 // --- HELPER: LOG ACTIVITY ---
