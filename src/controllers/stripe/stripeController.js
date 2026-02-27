@@ -47,14 +47,15 @@ export const createPartnerRegistrationPayment = async (req, res) => {
 
     // 🔹 Fetch registration fee from Settings
     const settings = await Settings.findOne({ isActive: true });
+    console.log("Fetched settings:", settings);
 
-    if (!settings || !settings.partnerregistrationfee) {
-      return res.status(400).json({
-        msg: "Partner registration fee not configured",
-      });
-    }
+if (!settings) {
+  return res.status(400).json({
+    msg: "Settings not configured",
+  });
+}
 
-    const registrationFee = settings.partnerregistrationfee;
+const registrationFee = settings.partnerregistrationfee ?? 0;
 
     // 🔹 Create Stripe Payment Intent
     const paymentIntent = await stripe.paymentIntents.create({
