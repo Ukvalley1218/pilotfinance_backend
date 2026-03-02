@@ -3,7 +3,7 @@ import Loan from "../../models/loan.js";
 import mongoose from "mongoose";
 import Transaction from "../../models/transaction.model.js";
 import User from "../../models/User.js";
-import CommissionSettings from "../../models/Settings.model.js";
+import Settings from "../../models/Settings.model.js";
 
 /**
  * @desc Create Loan (Triggered from Partner/User Panel)
