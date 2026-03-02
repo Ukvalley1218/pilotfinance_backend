@@ -29,7 +29,7 @@ import userKycRoutes from "./src/routes/user/kycRoutes.js";
 import userDashboardRoutes from "./src/routes/user/dashboardRoutes.js";
 import userLoanRoutes from "./src/routes/user/loanRoutes.js";
 import userSignatureRoutes from "./src/routes/user/documentRoutes.js";
-import stripeRoutes from "./src/routes/user/stripeRoutes.js";
+
 import emiRoutes from "./src/routes/user/emiRoutes.js";
 
 // --- IMPORT RECRUITMENT ROUTES ---
