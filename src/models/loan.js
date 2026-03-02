@@ -122,6 +122,26 @@ const loanSchema = new mongoose.Schema(
     },
     approvedBy: { type: String, default: "" },
     approvedBySub: { type: String, default: "" },
+
+    // --- AUTO-DEBIT FIELDS ---
+    autoDebitEnabled: {
+      type: Boolean,
+      default: false,
+    },
+    defaultPaymentMethod: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "PaymentMethod",
+      default: null,
+    },
+    nextPaymentDueDate: {
+      type: Date,
+      default: null,
+    },
+    autoDebitStatus: {
+      type: String,
+      enum: ["active", "paused", "failed", "inactive"],
+      default: "inactive",
+    },
   },
   {
     toJSON: { virtuals: true },

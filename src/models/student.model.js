@@ -182,6 +182,16 @@ const studentSchema = new mongoose.Schema(
     },
     verificationNotes: { type: String, default: "" },
     verificationDate: { type: Date },
+
+    // --- STRPE & AUTO-DEBIT FIELDS ---
+    stripeCustomerId: {
+      type: String,
+      default: null,
+    },
+    autoDebitEnabled: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

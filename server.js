@@ -29,9 +29,17 @@ import userKycRoutes from "./src/routes/user/kycRoutes.js";
 import userDashboardRoutes from "./src/routes/user/dashboardRoutes.js";
 import userLoanRoutes from "./src/routes/user/loanRoutes.js";
 import userSignatureRoutes from "./src/routes/user/documentRoutes.js";
+import stripeRoutes from "./src/routes/user/stripeRoutes.js";
+import emiRoutes from "./src/routes/user/emiRoutes.js";
 
 // --- IMPORT RECRUITMENT ROUTES ---
 import recruitmentAuthRoutes from "./src/routes/recruitment/authRoutes.js";
+
+// --- IMPORT WEBHOOK CONTROLLER ---
+import { handleStripeWebhook } from "./src/controllers/webhookController.js";
+
+// --- IMPORT EMI SCHEDULER ---
+import emiScheduler from "./src/jobs/emiScheduler.js";
 
 dotenv.config();
 
@@ -147,6 +155,13 @@ app.use(
 // Required for preflight
 // app.options("*", cors());
 
+// --- STRIPE WEBHOOK ROUTE (MUST BE BEFORE BODY PARSER) ---
+app.post(
+  "/api/webhooks/stripe",
+  express.raw({ type: "application/json" }),
+  handleStripeWebhook
+);
+
 // Body Parsers (Increased limit for high-res KYC documents)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -169,6 +184,8 @@ app.use("/api/kyc", userKycRoutes);
 app.use("/api/dashboard", userDashboardRoutes);
 app.use("/api/loans", userLoanRoutes);
 app.use("/api/signatures", userSignatureRoutes);
+app.use("/api/stripe", stripeRoutes);
+app.use("/api/emi", emiRoutes);
 
 // --- 🤝 RECRUITMENT PANEL ROUTES ---
 app.use("/api/recruitment/auth", recruitmentAuthRoutes);
@@ -195,4 +212,9 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Unified Server online on port ${PORT}`);
+
+  // Start EMI Scheduler for auto-debit processing
+  if (process.env.NODE_ENV !== "test") {
+    emiScheduler.start();
+  }
 });

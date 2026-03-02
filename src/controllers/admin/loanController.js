@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import Transaction from "../../models/transaction.model.js";
 import User from "../../models/User.js";
 import CommissionSettings from "../../models/commissionSettings.model.js";
+import { generateEMISchedule } from "../user/emiController.js";
 
 /**
  * @desc Create Loan (Triggered from Partner/User Panel)
@@ -249,6 +250,15 @@ if (student?.referredBy && commissionConfig) {
       });
 
       console.log("✅ Loan Disbursement Transaction Created:", txn._id);
+
+      // Generate EMI Schedule for auto-debit
+      try {
+        const emiSchedule = await generateEMISchedule(loan);
+        console.log(`✅ EMI Schedule Generated: ${emiSchedule.length} installments`);
+      } catch (emiError) {
+        console.error("⚠️ Failed to generate EMI schedule:", emiError.message);
+        // Continue without failing the disbursement
+      }
     }
 
     // ================== REJECTED ==================
