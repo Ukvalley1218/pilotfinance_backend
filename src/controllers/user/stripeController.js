@@ -14,16 +14,23 @@ import {
 } from "../../utils/stripe.js";
 
 /**
+ * Helper function to get student from request
+ * Handles both cases:
+ * 1. req.user is a Student document (logged in as Student)
+ * 2. req.user is a User document (logged in as User, need to find linked Student)
+ */
+const getStudentFromRequest = async (req) => {
+  return req.user;
+};
+
+/**
  * @desc    Create a Stripe customer for the logged-in student
  * @route   POST /api/stripe/create-customer
  * @access  Private (Student)
  */
 export const createCustomer = async (req, res) => {
   try {
-    const userId = req.user.id;
-
-    // Find student by userId
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -31,7 +38,6 @@ export const createCustomer = async (req, res) => {
       });
     }
 
-    // Check if customer already exists
     if (student.stripeCustomerId) {
       return res.status(400).json({
         success: false,
@@ -40,16 +46,14 @@ export const createCustomer = async (req, res) => {
       });
     }
 
-    // Create Stripe customer
     const customer = await createStripeCustomer({
-      name: student.name,
+      name: student.name || student.fullName,
       email: student.email,
       phone: student.phone,
       studentId: student._id.toString(),
-      userId: userId,
+      userId: student.userId || student._id.toString(),
     });
 
-    // Save customer ID to student
     student.stripeCustomerId = customer.id;
     await student.save();
 
@@ -76,7 +80,6 @@ export const createCustomer = async (req, res) => {
 export const savePaymentMethod = async (req, res) => {
   try {
     const { paymentMethodId } = req.body;
-    const userId = req.user.id;
 
     if (!paymentMethodId) {
       return res.status(400).json({
@@ -85,8 +88,7 @@ export const savePaymentMethod = async (req, res) => {
       });
     }
 
-    // Find student
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -94,30 +96,26 @@ export const savePaymentMethod = async (req, res) => {
       });
     }
 
-    // Ensure Stripe customer exists
     if (!student.stripeCustomerId) {
       const customer = await createStripeCustomer({
-        name: student.name,
+        name: student.name || student.fullName,
         email: student.email,
         phone: student.phone,
         studentId: student._id.toString(),
-        userId: userId,
+        userId: student.userId || student._id.toString(),
       });
       student.stripeCustomerId = customer.id;
       await student.save();
     }
 
-    // Attach payment method to customer
     const paymentMethod = await attachPaymentMethod(
       paymentMethodId,
       student.stripeCustomerId
     );
 
-    // Check if this is the first card - make it default
     const existingCards = await PaymentMethod.find({ studentId: student._id });
     const isDefault = existingCards.length === 0;
 
-    // If this is default, update other cards to not be default
     if (isDefault) {
       await PaymentMethod.updateMany(
         { studentId: student._id },
@@ -125,10 +123,9 @@ export const savePaymentMethod = async (req, res) => {
       );
     }
 
-    // Save payment method to database
     const newPaymentMethod = await PaymentMethod.create({
       studentId: student._id,
-      userId: userId,
+      userId: student.userId || student._id,
       stripePaymentMethodId: paymentMethod.id,
       last4: paymentMethod.card.last4,
       brand: paymentMethod.card.brand === "American Express" ? "Amex" : paymentMethod.card.brand,
@@ -137,7 +134,6 @@ export const savePaymentMethod = async (req, res) => {
       isDefault: isDefault,
     });
 
-    // Set as default in Stripe if first card
     if (isDefault) {
       await setDefaultPaymentMethod(student.stripeCustomerId, paymentMethod.id);
     }
@@ -171,10 +167,7 @@ export const savePaymentMethod = async (req, res) => {
  */
 export const getPaymentMethods = async (req, res) => {
   try {
-    const userId = req.user.id;
-
-    // Find student
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -182,7 +175,6 @@ export const getPaymentMethods = async (req, res) => {
       });
     }
 
-    // Get all active payment methods from database
     const paymentMethods = await PaymentMethod.find({
       studentId: student._id,
       isActive: true,
@@ -192,6 +184,7 @@ export const getPaymentMethods = async (req, res) => {
       success: true,
       data: paymentMethods.map((pm) => ({
         id: pm._id,
+        _id: pm._id,
         stripePaymentMethodId: pm.stripePaymentMethodId,
         last4: pm.last4,
         brand: pm.brand,
@@ -219,10 +212,8 @@ export const getPaymentMethods = async (req, res) => {
 export const setDefaultPaymentMethodHandler = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
 
-    // Find student
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -230,7 +221,6 @@ export const setDefaultPaymentMethodHandler = async (req, res) => {
       });
     }
 
-    // Find payment method
     const paymentMethod = await PaymentMethod.findOne({
       _id: id,
       studentId: student._id,
@@ -244,17 +234,14 @@ export const setDefaultPaymentMethodHandler = async (req, res) => {
       });
     }
 
-    // Update all payment methods to not be default
     await PaymentMethod.updateMany(
       { studentId: student._id },
       { isDefault: false }
     );
 
-    // Set this one as default
     paymentMethod.isDefault = true;
     await paymentMethod.save();
 
-    // Update in Stripe
     if (student.stripeCustomerId) {
       await setDefaultPaymentMethod(
         student.stripeCustomerId,
@@ -285,10 +272,8 @@ export const setDefaultPaymentMethodHandler = async (req, res) => {
 export const deletePaymentMethod = async (req, res) => {
   try {
     const { id } = req.params;
-    const userId = req.user.id;
 
-    // Find student
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -296,7 +281,6 @@ export const deletePaymentMethod = async (req, res) => {
       });
     }
 
-    // Find payment method
     const paymentMethod = await PaymentMethod.findOne({
       _id: id,
       studentId: student._id,
@@ -309,19 +293,15 @@ export const deletePaymentMethod = async (req, res) => {
       });
     }
 
-    // Detach from Stripe
     try {
       await detachPaymentMethod(paymentMethod.stripePaymentMethodId);
     } catch (stripeError) {
       console.error("Stripe detach error:", stripeError);
-      // Continue even if Stripe detach fails
     }
 
-    // Soft delete in database
     paymentMethod.isActive = false;
     await paymentMethod.save();
 
-    // If this was the default, set another card as default
     if (paymentMethod.isDefault) {
       const nextDefault = await PaymentMethod.findOne({
         studentId: student._id,
@@ -363,10 +343,7 @@ export const deletePaymentMethod = async (req, res) => {
  */
 export const createSetupIntentHandler = async (req, res) => {
   try {
-    const userId = req.user.id;
-
-    // Find student
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -374,20 +351,18 @@ export const createSetupIntentHandler = async (req, res) => {
       });
     }
 
-    // Ensure Stripe customer exists
     if (!student.stripeCustomerId) {
       const customer = await createStripeCustomer({
-        name: student.name,
+        name: student.name || student.fullName,
         email: student.email,
         phone: student.phone,
         studentId: student._id.toString(),
-        userId: userId,
+        userId: student.userId || student._id.toString(),
       });
       student.stripeCustomerId = customer.id;
       await student.save();
     }
 
-    // Create setup intent
     const setupIntent = await createSetupIntent(student.stripeCustomerId);
 
     res.status(200).json({
@@ -415,7 +390,6 @@ export const createSetupIntentHandler = async (req, res) => {
 export const createPaymentIntentHandler = async (req, res) => {
   try {
     const { amount, loanId, emiId } = req.body;
-    const userId = req.user.id;
 
     if (!amount || amount <= 0) {
       return res.status(400).json({
@@ -424,8 +398,7 @@ export const createPaymentIntentHandler = async (req, res) => {
       });
     }
 
-    // Find student
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -433,20 +406,18 @@ export const createPaymentIntentHandler = async (req, res) => {
       });
     }
 
-    // Ensure Stripe customer exists
     if (!student.stripeCustomerId) {
       const customer = await createStripeCustomer({
-        name: student.name,
+        name: student.name || student.fullName,
         email: student.email,
         phone: student.phone,
         studentId: student._id.toString(),
-        userId: userId,
+        userId: student.userId || student._id.toString(),
       });
       student.stripeCustomerId = customer.id;
       await student.save();
     }
 
-    // Create payment intent
     const paymentIntent = await createPaymentIntent(
       amount,
       student.stripeCustomerId,
@@ -486,11 +457,8 @@ export const processAutoDebit = async (req, res) => {
   try {
     const { emiScheduleId } = req.body;
 
-    // This endpoint is typically called by the scheduler
-    // Import EMISchedule model here to avoid circular dependency
     const EMISchedule = (await import("../../models/emiSchedule.model.js")).default;
 
-    // Find EMI schedule
     const emi = await EMISchedule.findById(emiScheduleId)
       .populate("loanId")
       .populate("studentId");
@@ -509,7 +477,6 @@ export const processAutoDebit = async (req, res) => {
       });
     }
 
-    // Get student
     const student = await Student.findById(emi.studentId);
     if (!student || !student.stripeCustomerId) {
       return res.status(400).json({
@@ -518,7 +485,6 @@ export const processAutoDebit = async (req, res) => {
       });
     }
 
-    // Get default payment method
     const defaultPaymentMethod = await PaymentMethod.findOne({
       studentId: student._id,
       isDefault: true,
@@ -532,10 +498,8 @@ export const processAutoDebit = async (req, res) => {
       });
     }
 
-    // Calculate total amount (EMI + late fee if applicable)
     const totalAmount = emi.amount + (emi.lateFee || 0);
 
-    // Charge customer
     const paymentIntent = await chargeCustomer(
       totalAmount,
       student.stripeCustomerId,
@@ -549,7 +513,6 @@ export const processAutoDebit = async (req, res) => {
       }
     );
 
-    // Update EMI with payment intent ID
     emi.stripePaymentIntentId = paymentIntent.id;
     emi.paymentMethodId = defaultPaymentMethod._id;
     await emi.save();
@@ -579,34 +542,32 @@ export const processAutoDebit = async (req, res) => {
  */
 export const createCardSetupSession = async (req, res) => {
   try {
-    const userId = req.user.id;
     const { frontendUrl } = req.body;
     const origin = frontendUrl || req.headers.origin || "http://localhost:5173";
 
-    // Find student
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({ success: false, msg: "Student profile not found" });
     }
 
-    // Ensure Stripe customer exists
     if (!student.stripeCustomerId) {
       const { createStripeCustomer: createCust } = await import("../../utils/stripe.js");
       const customer = await createCust({
-        name: student.name,
+        name: student.name || student.fullName,
         email: student.email,
         phone: student.phone,
         studentId: student._id.toString(),
-        userId: userId,
+        userId: student.userId || student._id.toString(),
       });
       student.stripeCustomerId = customer.id;
       await student.save();
     }
 
-    // Import stripe service
+    console.log("REQ USER MODEL:", req.user.constructor.modelName);
+console.log("REQ USER ID:", req.user._id);
+
     const stripe = (await import("../../services/stripe.service.js")).default;
 
-    // Create Checkout Session in setup mode
     const session = await stripe.checkout.sessions.create({
       mode: "setup",
       customer: student.stripeCustomerId,
@@ -615,7 +576,7 @@ export const createCardSetupSession = async (req, res) => {
       cancel_url: `${origin}/add-card?cancelled=true`,
       metadata: {
         studentId: student._id.toString(),
-        userId: userId,
+        userId: student.userId || student._id.toString(),
         type: "card_setup",
       },
     });
@@ -638,21 +599,19 @@ export const createCardSetupSession = async (req, res) => {
  */
 export const verifyCardSetup = async (req, res) => {
   try {
-    const userId = req.user.id;
     const { sessionId } = req.body;
 
     if (!sessionId) {
       return res.status(400).json({ success: false, msg: "Session ID is required" });
     }
 
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({ success: false, msg: "Student profile not found" });
     }
 
     const stripe = (await import("../../services/stripe.service.js")).default;
 
-    // Retrieve the checkout session
     const session = await stripe.checkout.sessions.retrieve(sessionId, {
       expand: ["setup_intent.payment_method"],
     });
@@ -661,7 +620,6 @@ export const verifyCardSetup = async (req, res) => {
       return res.status(400).json({ success: false, msg: `Setup not complete. Status: ${session.status}` });
     }
 
-    // Get the saved payment method from the setup intent
     const setupIntent = session.setup_intent;
     const paymentMethod = setupIntent.payment_method;
 
@@ -669,7 +627,6 @@ export const verifyCardSetup = async (req, res) => {
       return res.status(400).json({ success: false, msg: "No card information found" });
     }
 
-    // Check if card already saved
     const existingCard = await PaymentMethod.findOne({
       stripePaymentMethodId: paymentMethod.id,
       studentId: student._id,
@@ -691,14 +648,12 @@ export const verifyCardSetup = async (req, res) => {
       });
     }
 
-    // Check if first card (make it default)
     const existingCards = await PaymentMethod.find({ studentId: student._id, isActive: true });
     const isDefault = existingCards.length === 0;
 
-    // Save card in our DB
     const newCard = await PaymentMethod.create({
       studentId: student._id,
-      userId: userId,
+      userId: student.userId || student._id,
       stripePaymentMethodId: paymentMethod.id,
       last4: paymentMethod.card.last4,
       brand: paymentMethod.card.brand === "American Express" ? "Amex" : paymentMethod.card.brand,
@@ -707,7 +662,6 @@ export const verifyCardSetup = async (req, res) => {
       isDefault: isDefault,
     });
 
-    // Set as default in Stripe if first card
     if (isDefault) {
       const { setDefaultPaymentMethod: setDefault } = await import("../../utils/stripe.js");
       await setDefault(student.stripeCustomerId, paymentMethod.id);
@@ -738,20 +692,18 @@ export const verifyCardSetup = async (req, res) => {
  */
 export const createFirstPayment = async (req, res) => {
   try {
-    const userId = req.user.id;
     const { loanId, frontendUrl } = req.body;
-    const origin = frontendUrl || req.headers.origin || "http://localhost:5174";
+    const origin = frontendUrl || req.headers.origin || "http://localhost:5173";
 
     if (!loanId) {
       return res.status(400).json({ success: false, msg: "Loan ID is required" });
     }
 
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({ success: false, msg: "Student profile not found" });
     }
 
-    // Check for default payment method
     const defaultPaymentMethod = await PaymentMethod.findOne({
       studentId: student._id,
       isDefault: true,
@@ -766,27 +718,24 @@ export const createFirstPayment = async (req, res) => {
       });
     }
 
-    // Ensure Stripe customer exists
     if (!student.stripeCustomerId) {
       const { createStripeCustomer: createCust } = await import("../../utils/stripe.js");
       const customer = await createCust({
-        name: student.name,
+        name: student.name || student.fullName,
         email: student.email,
         phone: student.phone,
         studentId: student._id.toString(),
-        userId: userId,
+        userId: student.userId || student._id.toString(),
       });
       student.stripeCustomerId = customer.id;
       await student.save();
     }
 
-    // Find loan
     const loan = await Loan.findOne({ _id: loanId, studentId: student._id });
     if (!loan) {
       return res.status(404).json({ success: false, msg: "Loan not found" });
     }
 
-    // Find first pending EMI
     const EMIScheduleModel = (await import("../../models/emiSchedule.model.js")).default;
     const emi = await EMIScheduleModel.findOne({
       loanId: loan._id,
@@ -797,7 +746,6 @@ export const createFirstPayment = async (req, res) => {
       return res.status(400).json({ success: false, msg: "No pending EMIs found for this loan" });
     }
 
-    // Calculate total with late fee if overdue
     let totalAmount = emi.amount;
     const daysOverdue = Math.max(0, Math.ceil((new Date() - new Date(emi.dueDate)) / (1000 * 60 * 60 * 24)));
     if (daysOverdue > 0) {
@@ -808,7 +756,6 @@ export const createFirstPayment = async (req, res) => {
 
     const stripe = (await import("../../services/stripe.service.js")).default;
 
-    // Create Checkout Session for payment
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       customer: student.stripeCustomerId,
@@ -830,7 +777,7 @@ export const createFirstPayment = async (req, res) => {
         emiId: emi._id.toString(),
         loanId: loan._id.toString(),
         studentId: student._id.toString(),
-        userId: userId,
+        userId: student.userId || student._id.toString(),
         type: "first_payment",
         installmentNumber: emi.installmentNumber.toString(),
       },
@@ -858,28 +805,25 @@ export const createFirstPayment = async (req, res) => {
  */
 export const verifyFirstPayment = async (req, res) => {
   try {
-    const userId = req.user.id;
     const { sessionId } = req.body;
 
     if (!sessionId) {
       return res.status(400).json({ success: false, msg: "Session ID is required" });
     }
 
-    const student = await Student.findOne({ userId });
+    const student = await getStudentFromRequest(req);
     if (!student) {
       return res.status(404).json({ success: false, msg: "Student profile not found" });
     }
 
     const stripe = (await import("../../services/stripe.service.js")).default;
 
-    // Retrieve session
     const session = await stripe.checkout.sessions.retrieve(sessionId);
 
     if (session.payment_status !== "paid") {
       return res.status(400).json({ success: false, msg: `Payment not completed. Status: ${session.payment_status}` });
     }
 
-    // Verify ownership
     if (session.metadata.studentId !== student._id.toString()) {
       return res.status(403).json({ success: false, msg: "Session does not belong to this student" });
     }
@@ -893,7 +837,6 @@ export const verifyFirstPayment = async (req, res) => {
       return res.status(404).json({ success: false, msg: "EMI not found" });
     }
 
-    // Idempotent — if already paid, return success
     if (emi.status === "paid") {
       const loan = await Loan.findById(loanId);
       return res.status(200).json({
@@ -910,10 +853,8 @@ export const verifyFirstPayment = async (req, res) => {
       });
     }
 
-    // Calculate total
     const totalAmount = session.amount_total / 100;
 
-    // Calculate late fee if applicable
     const daysOverdue = Math.max(0, Math.ceil((new Date() - new Date(emi.dueDate)) / (1000 * 60 * 60 * 24)));
     if (daysOverdue > 0) {
       const lateFeePercentage = Math.min(daysOverdue * 0.01, 0.1);
@@ -921,12 +862,10 @@ export const verifyFirstPayment = async (req, res) => {
     }
     emi.totalAmount = totalAmount;
 
-    // Mark EMI as paid
     emi.status = "paid";
     emi.paidAt = new Date();
     emi.stripePaymentIntentId = session.payment_intent;
 
-    // Get default payment method for auto-debit
     const defaultPaymentMethod = await PaymentMethod.findOne({
       studentId: student._id,
       isDefault: true,
@@ -937,10 +876,9 @@ export const verifyFirstPayment = async (req, res) => {
       emi.paymentMethodId = defaultPaymentMethod._id;
     }
 
-    // Create transaction
     const transaction = await Transaction.create({
       id: `TXN-${Math.floor(100000 + Math.random() * 900000)}`,
-      userId: userId,
+      userId: student.userId || student._id,
       studentId: student._id,
       type: "Debit",
       desc: `EMI Payment - Installment ${emi.installmentNumber}`,
@@ -952,11 +890,9 @@ export const verifyFirstPayment = async (req, res) => {
     emi.transactionId = transaction._id;
     await emi.save();
 
-    // Update loan
     const loan = await Loan.findById(loanId);
     loan.paidAmount += totalAmount;
 
-    // Check if this was the first EMI payment - auto-enable auto-debit
     const paidEMIsCount = await EMIScheduleModel.countDocuments({
       loanId: loan._id,
       status: "paid",
@@ -964,7 +900,6 @@ export const verifyFirstPayment = async (req, res) => {
 
     let autoDebitActivated = false;
     if (paidEMIsCount === 1 && defaultPaymentMethod) {
-      // First EMI paid - auto-enable auto-debit
       loan.autoDebitEnabled = true;
       loan.defaultPaymentMethod = defaultPaymentMethod._id;
       loan.autoDebitStatus = "active";
@@ -972,13 +907,11 @@ export const verifyFirstPayment = async (req, res) => {
       console.log(`Auto-debit activated for loan ${loan.loanId}`);
     }
 
-    // Check if loan is completed
     if (loan.paidAmount >= loan.totalWithInterest - 0.5) {
       loan.status = "Completed";
       loan.paidAmount = loan.totalWithInterest;
     }
 
-    // Update next payment due date
     const nextEMI = await EMIScheduleModel.findOne({
       loanId: loan._id,
       status: "pending",
