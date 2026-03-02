@@ -29,13 +29,14 @@ import userKycRoutes from "./src/routes/user/kycRoutes.js";
 import userDashboardRoutes from "./src/routes/user/dashboardRoutes.js";
 import userLoanRoutes from "./src/routes/user/loanRoutes.js";
 import userSignatureRoutes from "./src/routes/user/documentRoutes.js";
+import userStripeRoutes from "./src/routes/user/stripeRoutes.js";
 
 import emiRoutes from "./src/routes/user/emiRoutes.js";
 
 // --- IMPORT RECRUITMENT ROUTES ---
 import recruitmentAuthRoutes from "./src/routes/recruitment/authRoutes.js";
 import { stripeWebhook } from "./src/controllers/stripe/stripeController.js";
-import stripeRoutes from "./src/routes/stripe/stripeRoutes.js";
+import recruitmentStripeRoutes from "./src/routes/stripe/stripeRoutes.js";
 
 // --- IMPORT WEBHOOK CONTROLLER ---
 import { handleStripeWebhook } from "./src/controllers/webhookController.js";
@@ -186,18 +187,12 @@ app.use("/api/kyc", userKycRoutes);
 app.use("/api/dashboard", userDashboardRoutes);
 app.use("/api/loans", userLoanRoutes);
 app.use("/api/signatures", userSignatureRoutes);
-app.use("/api/stripe", stripeRoutes);
+app.use("/api/stripe", userStripeRoutes);
 app.use("/api/emi", emiRoutes);
 
 // --- 🤝 RECRUITMENT PANEL ROUTES ---
 app.use("/api/recruitment/auth", recruitmentAuthRoutes);
-
-// stripe webhook (raw body required — kept separate from JSON body parser)
-app.post(
-  "/api/stripe/webhook",
-  express.raw({ type: "application/json" }),
-  stripeWebhook
-);
+app.use("/api/recruitment/stripe", recruitmentStripeRoutes);
 
 app.get("/", (req, res) => res.send("Pilot Finance Unified API Running 🚀"));
 

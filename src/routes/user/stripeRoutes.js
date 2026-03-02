@@ -7,6 +7,10 @@ import {
   deletePaymentMethod,
   createSetupIntentHandler,
   createPaymentIntentHandler,
+  createCardSetupSession,
+  verifyCardSetup,
+  createEMICheckoutSession,
+  verifyEMIPayment,
 } from "../../controllers/user/stripeController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
 
@@ -60,5 +64,33 @@ router.post("/create-setup-intent", protect, createSetupIntentHandler);
  * @access  Private (Student)
  */
 router.post("/create-payment-intent", protect, createPaymentIntentHandler);
+
+/**
+ * @route   POST /api/stripe/create-card-setup-session
+ * @desc    Create Stripe Checkout Session in setup mode (save card via Stripe page)
+ * @access  Private (Student)
+ */
+router.post("/create-card-setup-session", protect, createCardSetupSession);
+
+/**
+ * @route   POST /api/stripe/verify-card-setup
+ * @desc    Verify card setup session and save card to DB
+ * @access  Private (Student)
+ */
+router.post("/verify-card-setup", protect, verifyCardSetup);
+
+/**
+ * @route   POST /api/stripe/create-emi-checkout
+ * @desc    Create Stripe Checkout Session for EMI payment
+ * @access  Private (Student)
+ */
+router.post("/create-emi-checkout", protect, createEMICheckoutSession);
+
+/**
+ * @route   POST /api/stripe/verify-emi-payment
+ * @desc    Verify EMI payment checkout session
+ * @access  Private (Student)
+ */
+router.post("/verify-emi-payment", protect, verifyEMIPayment);
 
 export default router;

@@ -572,6 +572,375 @@ export const processAutoDebit = async (req, res) => {
   }
 };
 
+/**
+ * @desc    Create a Stripe Checkout Session in SETUP mode (for saving card)
+ * @route   POST /api/stripe/create-card-setup-session
+ * @access  Private (Student)
+ */
+export const createCardSetupSession = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { frontendUrl } = req.body;
+    const origin = frontendUrl || req.headers.origin || "http://localhost:5174";
+
+    // Find student
+    const student = await Student.findOne({ userId });
+    if (!student) {
+      return res.status(404).json({ success: false, msg: "Student profile not found" });
+    }
+
+    // Ensure Stripe customer exists
+    if (!student.stripeCustomerId) {
+      const { createStripeCustomer: createCust } = await import("../../utils/stripe.js");
+      const customer = await createCust({
+        name: student.name,
+        email: student.email,
+        phone: student.phone,
+        studentId: student._id.toString(),
+        userId: userId,
+      });
+      student.stripeCustomerId = customer.id;
+      await student.save();
+    }
+
+    // Import stripe service
+    const stripe = (await import("../../services/stripe.service.js")).default;
+
+    // Create Checkout Session in setup mode
+    const session = await stripe.checkout.sessions.create({
+      mode: "setup",
+      customer: student.stripeCustomerId,
+      payment_method_types: ["card"],
+      success_url: `${origin}/add-card?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/add-card?cancelled=true`,
+      metadata: {
+        studentId: student._id.toString(),
+        userId: userId,
+        type: "card_setup",
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      sessionUrl: session.url,
+      sessionId: session.id,
+    });
+  } catch (error) {
+    console.error("Create card setup session error:", error);
+    res.status(500).json({ success: false, msg: "Failed to create card setup session", error: error.message });
+  }
+};
+
+/**
+ * @desc    Verify card setup session and save card to DB
+ * @route   POST /api/stripe/verify-card-setup
+ * @access  Private (Student)
+ */
+export const verifyCardSetup = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId } = req.body;
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, msg: "Session ID is required" });
+    }
+
+    const student = await Student.findOne({ userId });
+    if (!student) {
+      return res.status(404).json({ success: false, msg: "Student profile not found" });
+    }
+
+    const stripe = (await import("../../services/stripe.service.js")).default;
+
+    // Retrieve the checkout session
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ["setup_intent.payment_method"],
+    });
+
+    if (session.status !== "complete") {
+      return res.status(400).json({ success: false, msg: `Setup not complete. Status: ${session.status}` });
+    }
+
+    // Get the saved payment method from the setup intent
+    const setupIntent = session.setup_intent;
+    const paymentMethod = setupIntent.payment_method;
+
+    if (!paymentMethod || !paymentMethod.card) {
+      return res.status(400).json({ success: false, msg: "No card information found" });
+    }
+
+    // Check if card already saved
+    const existingCard = await PaymentMethod.findOne({
+      stripePaymentMethodId: paymentMethod.id,
+      studentId: student._id,
+      isActive: true,
+    });
+
+    if (existingCard) {
+      return res.status(200).json({
+        success: true,
+        msg: "Card already saved",
+        data: {
+          id: existingCard._id,
+          last4: existingCard.last4,
+          brand: existingCard.brand,
+          expMonth: existingCard.expMonth,
+          expYear: existingCard.expYear,
+          isDefault: existingCard.isDefault,
+        },
+      });
+    }
+
+    // Check if first card (make it default)
+    const existingCards = await PaymentMethod.find({ studentId: student._id, isActive: true });
+    const isDefault = existingCards.length === 0;
+
+    // Save card in our DB
+    const newCard = await PaymentMethod.create({
+      studentId: student._id,
+      userId: userId,
+      stripePaymentMethodId: paymentMethod.id,
+      last4: paymentMethod.card.last4,
+      brand: paymentMethod.card.brand === "American Express" ? "Amex" : paymentMethod.card.brand,
+      expMonth: paymentMethod.card.exp_month,
+      expYear: paymentMethod.card.exp_year,
+      isDefault: isDefault,
+    });
+
+    // Set as default in Stripe if first card
+    if (isDefault) {
+      const { setDefaultPaymentMethod: setDefault } = await import("../../utils/stripe.js");
+      await setDefault(student.stripeCustomerId, paymentMethod.id);
+    }
+
+    res.status(200).json({
+      success: true,
+      msg: "Card saved successfully!",
+      data: {
+        id: newCard._id,
+        last4: newCard.last4,
+        brand: newCard.brand,
+        expMonth: newCard.expMonth,
+        expYear: newCard.expYear,
+        isDefault: newCard.isDefault,
+      },
+    });
+  } catch (error) {
+    console.error("Verify card setup error:", error);
+    res.status(500).json({ success: false, msg: "Failed to verify card setup", error: error.message });
+  }
+};
+
+/**
+ * @desc    Create Stripe Checkout Session for EMI payment
+ * @route   POST /api/stripe/create-emi-checkout
+ * @access  Private (Student)
+ */
+export const createEMICheckoutSession = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { emiId, frontendUrl } = req.body;
+    const origin = frontendUrl || req.headers.origin || "http://localhost:5174";
+
+    if (!emiId) {
+      return res.status(400).json({ success: false, msg: "EMI ID is required" });
+    }
+
+    const student = await Student.findOne({ userId });
+    if (!student) {
+      return res.status(404).json({ success: false, msg: "Student profile not found" });
+    }
+
+    // Ensure Stripe customer exists
+    if (!student.stripeCustomerId) {
+      const { createStripeCustomer: createCust } = await import("../../utils/stripe.js");
+      const customer = await createCust({
+        name: student.name,
+        email: student.email,
+        phone: student.phone,
+        studentId: student._id.toString(),
+        userId: userId,
+      });
+      student.stripeCustomerId = customer.id;
+      await student.save();
+    }
+
+    // Find EMI
+    const EMIScheduleModel = (await import("../../models/emiSchedule.model.js")).default;
+    const emi = await EMIScheduleModel.findById(emiId).populate("loanId");
+
+    if (!emi) {
+      return res.status(404).json({ success: false, msg: "EMI not found" });
+    }
+
+    if (emi.studentId.toString() !== student._id.toString()) {
+      return res.status(403).json({ success: false, msg: "Not authorized" });
+    }
+
+    if (emi.status === "paid") {
+      return res.status(400).json({ success: false, msg: "EMI already paid" });
+    }
+
+    // Calculate total with late fee
+    let totalAmount = emi.amount;
+    if (emi.isOverdue) {
+      const lateFeePercentage = Math.min(emi.daysOverdue * 0.01, 0.1);
+      const lateFee = Math.round(emi.amount * lateFeePercentage * 100) / 100;
+      totalAmount = emi.amount + lateFee;
+    }
+
+    const stripe = (await import("../../services/stripe.service.js")).default;
+
+    // Create Checkout Session for payment
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      customer: student.stripeCustomerId,
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "cad",
+            product_data: {
+              name: `EMI Payment - Installment #${emi.installmentNumber}`,
+              description: `Loan: ${emi.loanId.loanId || emi.loanId.category} | Due: ${new Date(emi.dueDate).toLocaleDateString()}`,
+            },
+            unit_amount: Math.round(totalAmount * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      metadata: {
+        emiId: emi._id.toString(),
+        loanId: emi.loanId._id.toString(),
+        studentId: student._id.toString(),
+        userId: userId,
+        type: "emi_payment",
+        installmentNumber: emi.installmentNumber.toString(),
+      },
+      success_url: `${origin}/emi-schedule?emi_session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/emi-schedule?emi_cancelled=true`,
+    });
+
+    res.status(200).json({
+      success: true,
+      sessionUrl: session.url,
+      sessionId: session.id,
+      amount: totalAmount,
+    });
+  } catch (error) {
+    console.error("Create EMI checkout error:", error);
+    res.status(500).json({ success: false, msg: "Failed to create EMI checkout", error: error.message });
+  }
+};
+
+/**
+ * @desc    Verify EMI payment session
+ * @route   POST /api/stripe/verify-emi-payment
+ * @access  Private (Student)
+ */
+export const verifyEMIPayment = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId } = req.body;
+
+    if (!sessionId) {
+      return res.status(400).json({ success: false, msg: "Session ID is required" });
+    }
+
+    const student = await Student.findOne({ userId });
+    if (!student) {
+      return res.status(404).json({ success: false, msg: "Student profile not found" });
+    }
+
+    const stripe = (await import("../../services/stripe.service.js")).default;
+
+    // Retrieve session
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+    if (session.payment_status !== "paid") {
+      return res.status(400).json({ success: false, msg: `Payment not completed. Status: ${session.payment_status}` });
+    }
+
+    // Verify ownership
+    if (session.metadata.studentId !== student._id.toString()) {
+      return res.status(403).json({ success: false, msg: "Session does not belong to this student" });
+    }
+
+    const emiId = session.metadata.emiId;
+    const EMIScheduleModel = (await import("../../models/emiSchedule.model.js")).default;
+    const emi = await EMIScheduleModel.findById(emiId).populate("loanId");
+
+    if (!emi) {
+      return res.status(404).json({ success: false, msg: "EMI not found" });
+    }
+
+    // Idempotent — if already paid, return success
+    if (emi.status === "paid") {
+      return res.status(200).json({
+        success: true,
+        msg: "EMI already marked as paid",
+        data: { emiId: emi._id, status: emi.status, paidAt: emi.paidAt },
+      });
+    }
+
+    // Calculate total
+    const totalAmount = session.amount_total / 100;
+
+    // Calculate late fee if applicable
+    if (emi.isOverdue) {
+      const lateFeePercentage = Math.min(emi.daysOverdue * 0.01, 0.1);
+      emi.lateFee = Math.round(emi.amount * lateFeePercentage * 100) / 100;
+      emi.totalAmount = totalAmount;
+    }
+
+    // Mark EMI as paid
+    emi.status = "paid";
+    emi.paidAt = new Date();
+    emi.stripePaymentIntentId = session.payment_intent;
+
+    // Create transaction
+    const transaction = await Transaction.create({
+      id: `TXN-${Math.floor(100000 + Math.random() * 900000)}`,
+      userId: userId,
+      studentId: student._id,
+      type: "Debit",
+      desc: `EMI Payment - Installment ${emi.installmentNumber}`,
+      subDesc: `Loan Ref: ${emi.loanId.loanId}`,
+      amount: totalAmount,
+      status: "Completed",
+    });
+
+    emi.transactionId = transaction._id;
+    await emi.save();
+
+    // Update loan
+    const loan = await Loan.findById(emi.loanId._id);
+    loan.paidAmount += totalAmount;
+
+    if (loan.paidAmount >= loan.totalWithInterest - 0.5) {
+      loan.status = "Completed";
+      loan.paidAmount = loan.totalWithInterest;
+    }
+
+    await loan.save();
+
+    res.status(200).json({
+      success: true,
+      msg: "EMI payment verified and recorded",
+      data: {
+        emiId: emi._id,
+        amount: totalAmount,
+        paidAt: emi.paidAt,
+        transactionId: transaction.id,
+        loanStatus: loan.status,
+      },
+    });
+  } catch (error) {
+    console.error("Verify EMI payment error:", error);
+    res.status(500).json({ success: false, msg: "Failed to verify EMI payment", error: error.message });
+  }
+};
+
 export default {
   createCustomer,
   savePaymentMethod,
@@ -581,4 +950,8 @@ export default {
   createSetupIntentHandler,
   createPaymentIntentHandler,
   processAutoDebit,
+  createCardSetupSession,
+  verifyCardSetup,
+  createEMICheckoutSession,
+  verifyEMIPayment,
 };
