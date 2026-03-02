@@ -26,10 +26,9 @@ const paymentMethodSchema = new mongoose.Schema(
       required: true,
     },
     brand: {
-      type: String,
-      required: true,
-      enum: ["Visa", "Mastercard", "Amex", "Discover", "Other"],
-    },
+  type: String,
+  enum: ["visa", "mastercard", "amex", "discover", "diners", "jcb", "unionpay"],
+},
     expMonth: {
       type: Number,
       required: true,
