@@ -192,13 +192,12 @@ app.use("/api/emi", emiRoutes);
 // --- 🤝 RECRUITMENT PANEL ROUTES ---
 app.use("/api/recruitment/auth", recruitmentAuthRoutes);
 
-// stripe routes 
+// stripe webhook (raw body required — kept separate from JSON body parser)
 app.post(
   "/api/stripe/webhook",
   express.raw({ type: "application/json" }),
   stripeWebhook
 );
-app.use("/api/stripe", stripeRoutes);
 
 app.get("/", (req, res) => res.send("Pilot Finance Unified API Running 🚀"));
 
