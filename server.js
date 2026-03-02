@@ -34,6 +34,8 @@ import emiRoutes from "./src/routes/user/emiRoutes.js";
 
 // --- IMPORT RECRUITMENT ROUTES ---
 import recruitmentAuthRoutes from "./src/routes/recruitment/authRoutes.js";
+import { stripeWebhook } from "./src/controllers/stripe/stripeController.js";
+import stripeRoutes from "./src/routes/stripe/stripeRoutes.js";
 
 // --- IMPORT WEBHOOK CONTROLLER ---
 import { handleStripeWebhook } from "./src/controllers/webhookController.js";
@@ -189,6 +191,14 @@ app.use("/api/emi", emiRoutes);
 
 // --- 🤝 RECRUITMENT PANEL ROUTES ---
 app.use("/api/recruitment/auth", recruitmentAuthRoutes);
+
+// stripe routes 
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  stripeWebhook
+);
+app.use("/api/stripe", stripeRoutes);
 
 app.get("/", (req, res) => res.send("Pilot Finance Unified API Running 🚀"));
 

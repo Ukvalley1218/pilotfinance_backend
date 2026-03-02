@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const commissionSettingsSchema = new mongoose.Schema(
+const SettingsSchema = new mongoose.Schema(
   {
     type: {
       type: String,
@@ -10,13 +10,14 @@ const commissionSettingsSchema = new mongoose.Schema(
     percentage: { type: Number, default: 0 },
     fixedAmount: { type: Number, default: 0 },
     isActive: { type: Boolean, default: true },
+    partnerregistrationfee: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
-const CommissionSettings = mongoose.model(
-  "CommissionSettings",
-  commissionSettingsSchema
+const Settings = mongoose.model(
+  "Settings",
+  SettingsSchema
 );
 
-export default CommissionSettings;
+export default Settings;

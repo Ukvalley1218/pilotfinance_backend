@@ -47,7 +47,7 @@ const userSchema = new mongoose.Schema(
     address: { type: String },
     education: { type: String },
     gender: { type: String },
-    status:{type:String,enum:["Active","Inactive"],default:"Active"},
+    status:{type:String,enum:["Active","Inactive","Blocked"],default:"Active"},
     maritalStatus: { type: String },
     avatar: { type: String, default: "" },
 
@@ -64,7 +64,14 @@ const userSchema = new mongoose.Schema(
   percentage: { type: Number, default: 0 },
   fixedAmount: { type: Number, default: 0 },
 },
-
+registrationPaymentStatus: {
+  type: String,
+  enum: ["Pending", "Paid","failed"],
+  default: "Pending",
+},
+registrationPaymentIntentId: {
+  type: String,
+},
 
 
     referredStudents: [

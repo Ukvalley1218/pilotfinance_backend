@@ -2,6 +2,7 @@ import Loan from "../../models/loan.js";
 import { Student } from "../../models/student.model.js";
 import Transaction from "../../models/transaction.model.js";
 import mongoose from "mongoose";
+import stripe from "../../services/stripe.service.js";
 
 // --- 1. SUBMIT LOAN REQUEST ---
 /**
@@ -134,40 +135,38 @@ export const repayLoan = async (req, res) => {
     const loan = await Loan.findOne({
       _id: loanId,
       studentId: req.user.id,
-    }).populate("studentId");
+    });
 
     if (!loan) return res.status(404).json({ msg: "Loan not found" });
 
-    // Update loan balances
-    loan.paidAmount += paymentAmount;
-    loan.totalAmount = Math.max(0, loan.totalWithInterest - loan.paidAmount);
-
-    if (loan.totalAmount <= 0) {
-      loan.status = "Completed";
-      await Student.findByIdAndUpdate(req.user.id, { loanStatus: "Completed" });
+    if (loan.status !== "Disbursed" && loan.status !== "Active") {
+      return res.status(400).json({ msg: "Loan not eligible for repayment" });
     }
 
-    await loan.save();
+    if (paymentAmount > loan.totalAmount) {
+      return res.status(400).json({
+        msg: `Maximum payable amount is ${loan.totalAmount}`,
+      });
+    }
 
-    // 🔥 CREATE TRANSACTION (REPAYMENT DEBIT)
-    await Transaction.create({
-      id: `TXN-PAY-${Math.floor(100000 + Math.random() * 900000)}`,
-      userId: loan.studentId.userId || loan.studentId._id, // wallet owner
-      studentId: loan.studentId._id,
-      type: "Debit",
-      desc: `Repayment for ${loan.category} Loan`,
-      subDesc: `Loan Ref: ${loan._id}`,
-      amount: paymentAmount,
-      status: "Completed",
+    // ✅ Create Stripe Payment Intent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(paymentAmount * 100),
+      currency: "cad",
+      metadata: {
+        loanId: loan._id.toString(),
+        studentId: req.user.id,
+        type: "LoanRepayment",
+      },
     });
 
-    res.json({
+    res.status(200).json({
       success: true,
-      remainingBalance: loan.totalAmount,
+      clientSecret: paymentIntent.client_secret,
     });
   } catch (err) {
-    console.error("Repayment Error:", err);
-    res.status(500).json({ msg: "Repayment failed" });
+    console.error("Repayment Intent Error:", err);
+    res.status(500).json({ msg: "Repayment initiation failed" });
   }
 };
 
