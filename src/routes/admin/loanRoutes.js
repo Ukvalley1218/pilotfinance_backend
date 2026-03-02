@@ -5,6 +5,10 @@ import {
   getAllLoans,
   getLoanById,
   deleteLoan,
+  triggerEMIScheduler,
+  markOverdueEMIs,
+  getLoanEMISchedule,
+  regenerateEMISchedule,
 } from "../../controllers/admin/loanController.js";
 // FIXED: Added import for the settings controller to handle dynamic rates
 import {
@@ -77,5 +81,31 @@ router.delete("/:id", protect, deleteLoan);
 
 // Handles DELETE /api/loan/loans/:id
 router.delete("/loans/:id", protect, deleteLoan);
+
+// --- 6. EMI SCHEDULER ROUTES (ADMIN TESTING) ---
+
+/**
+ * @route   POST /api/loan/emi/trigger
+ * @desc    Manually trigger EMI scheduler (for testing auto-debit)
+ */
+router.post("/emi/trigger", protect, adminOnly, triggerEMIScheduler);
+
+/**
+ * @route   POST /api/loan/emi/mark-overdue
+ * @desc    Manually mark overdue EMIs
+ */
+router.post("/emi/mark-overdue", protect, adminOnly, markOverdueEMIs);
+
+/**
+ * @route   GET /api/loan/:id/emi-schedule
+ * @desc    Get EMI schedule for a specific loan
+ */
+router.get("/:id/emi-schedule", protect, getLoanEMISchedule);
+
+/**
+ * @route   POST /api/loan/:id/regenerate-emi
+ * @desc    Regenerate EMI schedule for a loan
+ */
+router.post("/:id/regenerate-emi", protect, adminOnly, regenerateEMISchedule);
 
 export default router;

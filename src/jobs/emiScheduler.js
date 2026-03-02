@@ -3,6 +3,7 @@ import EMISchedule from "../models/emiSchedule.model.js";
 import Loan from "../models/loan.js";
 import { Student } from "../models/student.model.js";
 import PaymentMethod from "../models/paymentMethod.model.js";
+import Transaction from "../models/transaction.model.js";
 import { chargeCustomer } from "../utils/stripe.js";
 
 /**
@@ -12,19 +13,26 @@ import { chargeCustomer } from "../utils/stripe.js";
 class EMIScheduler {
   constructor() {
     this.job = null;
+    this.overdueJob = null;
   }
 
   /**
    * Start the EMI scheduler
    */
   start() {
-    // Run daily at 9:00 AM UTC
+    // Run daily at 9:00 AM UTC - Process EMIs
     this.job = cron.schedule("0 9 * * *", async () => {
       console.log("Running EMI auto-debit scheduler...");
       await this.processEMIs();
     });
 
-    console.log("EMI Scheduler started - running daily at 9:00 AM UTC");
+    // Run daily at 00:05 AM UTC - Mark overdue EMIs
+    this.overdueJob = cron.schedule("5 0 * * *", async () => {
+      console.log("Running overdue EMI marker...");
+      await this.markOverdueEMIs();
+    });
+
+    console.log("EMI Scheduler started - running daily at 9:00 AM UTC (process) and 00:05 AM UTC (mark overdue)");
   }
 
   /**
@@ -33,8 +41,11 @@ class EMIScheduler {
   stop() {
     if (this.job) {
       this.job.stop();
-      console.log("EMI Scheduler stopped");
     }
+    if (this.overdueJob) {
+      this.overdueJob.stop();
+    }
+    console.log("EMI Scheduler stopped");
   }
 
   /**
@@ -74,6 +85,12 @@ class EMIScheduler {
       const loan = emi.loanId;
       const student = emi.studentId;
 
+      // Skip if already paid
+      if (emi.status === "paid") {
+        console.log(`EMI ${emi._id} already paid, skipping`);
+        return;
+      }
+
       // Check if auto-debit is enabled for this loan
       if (!loan.autoDebitEnabled || loan.autoDebitStatus !== "active") {
         console.log(`Auto-debit not enabled for loan ${loan.loanId}`);
@@ -107,9 +124,11 @@ class EMIScheduler {
         const lateFeePercentage = Math.min(daysOverdue * 0.01, 0.1);
         emi.lateFee = Math.round(emi.amount * lateFeePercentage * 100) / 100;
         totalAmount = emi.amount + emi.lateFee;
+        console.log(`EMI ${emi._id} is ${daysOverdue} days overdue. Late fee: $${emi.lateFee}`);
       }
 
-      console.log(`Processing EMI ${emi._id} for $${totalAmount}`);
+      emi.totalAmount = totalAmount;
+      console.log(`Processing EMI ${emi._id} for $${totalAmount} (EMI: $${emi.amount}, Late Fee: $${emi.lateFee || 0})`);
 
       // Charge the customer
       const paymentIntent = await chargeCustomer(
@@ -122,13 +141,13 @@ class EMIScheduler {
           studentId: student._id.toString(),
           installmentNumber: emi.installmentNumber.toString(),
           type: "auto_debit_emi",
+          lateFee: (emi.lateFee || 0).toString(),
         }
       );
 
       // Update EMI with payment intent ID
       emi.stripePaymentIntentId = paymentIntent.id;
       emi.paymentMethodId = defaultPaymentMethod._id;
-      emi.totalAmount = totalAmount;
 
       // If payment succeeded immediately
       if (paymentIntent.status === "succeeded") {
@@ -156,12 +175,12 @@ class EMIScheduler {
       // Update EMI status
       emi.status = "paid";
       emi.paidAt = new Date();
+      emi.totalAmount = paymentIntent.amount / 100; // Convert from cents
 
       // Create transaction
-      const Transaction = (await import("../models/transaction.model.js")).default;
       const transaction = await Transaction.create({
         id: `TXN-${Math.floor(100000 + Math.random() * 900000)}`,
-        userId: student.userId,
+        userId: student?.userId,
         studentId: student._id,
         type: "Debit",
         desc: `EMI Payment - Installment ${emi.installmentNumber}`,
@@ -181,8 +200,18 @@ class EMIScheduler {
         loan.paidAmount = loan.totalWithInterest;
       }
 
+      // Update next payment due date to the next pending EMI
+      const nextEMI = await EMISchedule.findOne({
+        loanId: loan._id,
+        status: "pending",
+      }).sort({ dueDate: 1 });
+
+      if (nextEMI) {
+        loan.nextPaymentDueDate = nextEMI.dueDate;
+      }
+
       await loan.save();
-      console.log(`EMI ${emi._id} successfully paid`);
+      console.log(`EMI ${emi._id} successfully paid via auto-debit`);
     } catch (error) {
       console.error("Error handling successful payment:", error);
     }

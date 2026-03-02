@@ -70,10 +70,18 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
       const emi = await EMISchedule.findById(emiId).populate("loanId");
 
       if (emi && emi.status !== "paid") {
+        // Calculate late fee if overdue
+        const daysOverdue = Math.max(0, Math.ceil((new Date() - new Date(emi.dueDate)) / (1000 * 60 * 60 * 24)));
+        if (daysOverdue > 0 && !emi.lateFee) {
+          const lateFeePercentage = Math.min(daysOverdue * 0.01, 0.1);
+          emi.lateFee = Math.round(emi.amount * lateFeePercentage * 100) / 100;
+        }
+
         // Update EMI status
         emi.status = "paid";
         emi.paidAt = new Date();
         emi.stripePaymentIntentId = id;
+        emi.totalAmount = amount / 100; // Convert from cents
 
         // Get student
         const student = await Student.findById(emi.studentId);
@@ -81,11 +89,11 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
         // Create transaction
         const transaction = await Transaction.create({
           id: `TXN-${Math.floor(100000 + Math.random() * 900000)}`,
-          userId: student.userId,
+          userId: student?.userId,
           studentId: emi.studentId,
           type: "Debit",
           desc: `EMI Payment - Installment ${emi.installmentNumber}`,
-          subDesc: `Loan Ref: ${emi.loanId.loanId}`,
+          subDesc: `Loan Ref: ${emi.loanId?.loanId || emi.loanId}`,
           amount: amount / 100, // Convert from cents
           status: "Completed",
         });
@@ -94,18 +102,32 @@ async function handlePaymentIntentSucceeded(paymentIntent) {
         await emi.save();
 
         // Update loan
-        const loan = await Loan.findById(emi.loanId._id);
-        loan.paidAmount += amount / 100;
+        const loan = await Loan.findById(emi.loanId._id || emi.loanId);
+        if (loan) {
+          loan.paidAmount += amount / 100;
 
-        // Check if loan is completed
-        if (loan.paidAmount >= loan.totalWithInterest - 0.5) {
-          loan.status = "Completed";
-          loan.paidAmount = loan.totalWithInterest;
+          // Check if loan is completed
+          if (loan.paidAmount >= loan.totalWithInterest - 0.5) {
+            loan.status = "Completed";
+            loan.paidAmount = loan.totalWithInterest;
+          }
+
+          // Update next payment due date
+          const nextEMI = await EMISchedule.findOne({
+            loanId: loan._id,
+            status: "pending",
+          }).sort({ dueDate: 1 });
+
+          if (nextEMI) {
+            loan.nextPaymentDueDate = nextEMI.dueDate;
+          }
+
+          await loan.save();
         }
 
-        await loan.save();
-
-        console.log(`EMI ${emiId} marked as paid`);
+        console.log(`EMI ${emiId} marked as paid via webhook`);
+      } else if (emi && emi.status === "paid") {
+        console.log(`EMI ${emiId} already marked as paid, skipping duplicate processing`);
       }
     }
   }

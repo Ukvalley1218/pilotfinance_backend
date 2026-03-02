@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import Transaction from "../../models/transaction.model.js";
 import User from "../../models/User.js";
 import Settings from "../../models/Settings.model.js";
+import { generateEMISchedule } from "../user/emiController.js";
 
 /**
  * @desc Create Loan (Triggered from Partner/User Panel)
@@ -347,5 +348,140 @@ export const deleteLoan = async (req, res) => {
     res.json({ success: true, message: "Loan deleted" });
   } catch {
     res.status(500).json({ message: "Delete failed" });
+  }
+};
+
+/**
+ * @desc Trigger EMI scheduler manually (for testing)
+ * @route POST /api/loan/emi/trigger
+ * @access Admin only
+ */
+export const triggerEMIScheduler = async (req, res) => {
+  try {
+    const emiScheduler = (await import("../../jobs/emiScheduler.js")).default;
+
+    console.log("🔄 Manually triggering EMI scheduler...");
+    await emiScheduler.triggerNow();
+
+    res.json({
+      success: true,
+      message: "EMI scheduler triggered successfully. Check server logs for details.",
+    });
+  } catch (error) {
+    console.error("Error triggering EMI scheduler:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to trigger EMI scheduler",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc Mark overdue EMIs manually (for testing)
+ * @route POST /api/loan/emi/mark-overdue
+ * @access Admin only
+ */
+export const markOverdueEMIs = async (req, res) => {
+  try {
+    const emiScheduler = (await import("../../jobs/emiScheduler.js")).default;
+
+    console.log("🔄 Manually marking overdue EMIs...");
+    await emiScheduler.markOverdueEMIs();
+
+    res.json({
+      success: true,
+      message: "Overdue EMIs marked successfully. Check server logs for details.",
+    });
+  } catch (error) {
+    console.error("Error marking overdue EMIs:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to mark overdue EMIs",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc Get EMI schedule for a specific loan (admin view)
+ * @route GET /api/loan/:id/emi-schedule
+ * @access Admin only
+ */
+export const getLoanEMISchedule = async (req, res) => {
+  try {
+    const EMISchedule = (await import("../../models/emiSchedule.model.js")).default;
+    const loan = await Loan.findById(req.params.id);
+
+    if (!loan) {
+      return res.status(404).json({ message: "Loan not found" });
+    }
+
+    const emiSchedules = await EMISchedule.find({ loanId: loan._id })
+      .populate("paymentMethodId", "last4 brand")
+      .sort({ installmentNumber: 1 });
+
+    res.json({
+      success: true,
+      data: {
+        loan: {
+          id: loan._id,
+          loanId: loan.loanId,
+          status: loan.status,
+          totalWithInterest: loan.totalWithInterest,
+          paidAmount: loan.paidAmount,
+          autoDebitEnabled: loan.autoDebitEnabled,
+          autoDebitStatus: loan.autoDebitStatus,
+          nextPaymentDueDate: loan.nextPaymentDueDate,
+        },
+        emiSchedules: emiSchedules,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching EMI schedule:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch EMI schedule",
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * @desc Regenerate EMI schedule for a loan
+ * @route POST /api/loan/:id/regenerate-emi
+ * @access Admin only
+ */
+export const regenerateEMISchedule = async (req, res) => {
+  try {
+    const EMISchedule = (await import("../../models/emiSchedule.model.js")).default;
+    const loan = await Loan.findById(req.params.id);
+
+    if (!loan) {
+      return res.status(404).json({ message: "Loan not found" });
+    }
+
+    // Delete existing EMI schedules for this loan
+    await EMISchedule.deleteMany({ loanId: loan._id });
+
+    // Generate new EMI schedule
+    const emiSchedules = await generateEMISchedule(loan);
+
+    res.json({
+      success: true,
+      message: "EMI schedule regenerated successfully",
+      data: {
+        loanId: loan._id,
+        emiCount: emiSchedules.length,
+        emiSchedules: emiSchedules,
+      },
+    });
+  } catch (error) {
+    console.error("Error regenerating EMI schedule:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to regenerate EMI schedule",
+      error: error.message,
+    });
   }
 };
