@@ -581,7 +581,7 @@ export const createCardSetupSession = async (req, res) => {
   try {
     const userId = req.user.id;
     const { frontendUrl } = req.body;
-    const origin = frontendUrl || req.headers.origin || "http://localhost:5174";
+    const origin = frontendUrl || req.headers.origin || "http://localhost:5173";
 
     // Find student
     const student = await Student.findOne({ userId });
@@ -732,23 +732,38 @@ export const verifyCardSetup = async (req, res) => {
 };
 
 /**
- * @desc    Create Stripe Checkout Session for EMI payment
- * @route   POST /api/stripe/create-emi-checkout
+ * @desc    Create Stripe Checkout Session for first EMI payment (activates auto-debit)
+ * @route   POST /api/stripe/create-first-payment
  * @access  Private (Student)
  */
-export const createEMICheckoutSession = async (req, res) => {
+export const createFirstPayment = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { emiId, frontendUrl } = req.body;
+    const { loanId, frontendUrl } = req.body;
     const origin = frontendUrl || req.headers.origin || "http://localhost:5174";
 
-    if (!emiId) {
-      return res.status(400).json({ success: false, msg: "EMI ID is required" });
+    if (!loanId) {
+      return res.status(400).json({ success: false, msg: "Loan ID is required" });
     }
 
     const student = await Student.findOne({ userId });
     if (!student) {
       return res.status(404).json({ success: false, msg: "Student profile not found" });
+    }
+
+    // Check for default payment method
+    const defaultPaymentMethod = await PaymentMethod.findOne({
+      studentId: student._id,
+      isDefault: true,
+      isActive: true,
+    });
+
+    if (!defaultPaymentMethod) {
+      return res.status(400).json({
+        success: false,
+        msg: "Please add a payment method before making a payment",
+        requiresPaymentMethod: true,
+      });
     }
 
     // Ensure Stripe customer exists
@@ -765,26 +780,28 @@ export const createEMICheckoutSession = async (req, res) => {
       await student.save();
     }
 
-    // Find EMI
+    // Find loan
+    const loan = await Loan.findOne({ _id: loanId, studentId: student._id });
+    if (!loan) {
+      return res.status(404).json({ success: false, msg: "Loan not found" });
+    }
+
+    // Find first pending EMI
     const EMIScheduleModel = (await import("../../models/emiSchedule.model.js")).default;
-    const emi = await EMIScheduleModel.findById(emiId).populate("loanId");
+    const emi = await EMIScheduleModel.findOne({
+      loanId: loan._id,
+      status: { $in: ["pending", "overdue"] },
+    }).sort({ installmentNumber: 1 });
 
     if (!emi) {
-      return res.status(404).json({ success: false, msg: "EMI not found" });
+      return res.status(400).json({ success: false, msg: "No pending EMIs found for this loan" });
     }
 
-    if (emi.studentId.toString() !== student._id.toString()) {
-      return res.status(403).json({ success: false, msg: "Not authorized" });
-    }
-
-    if (emi.status === "paid") {
-      return res.status(400).json({ success: false, msg: "EMI already paid" });
-    }
-
-    // Calculate total with late fee
+    // Calculate total with late fee if overdue
     let totalAmount = emi.amount;
-    if (emi.isOverdue) {
-      const lateFeePercentage = Math.min(emi.daysOverdue * 0.01, 0.1);
+    const daysOverdue = Math.max(0, Math.ceil((new Date() - new Date(emi.dueDate)) / (1000 * 60 * 60 * 24)));
+    if (daysOverdue > 0) {
+      const lateFeePercentage = Math.min(daysOverdue * 0.01, 0.1);
       const lateFee = Math.round(emi.amount * lateFeePercentage * 100) / 100;
       totalAmount = emi.amount + lateFee;
     }
@@ -799,10 +816,10 @@ export const createEMICheckoutSession = async (req, res) => {
       line_items: [
         {
           price_data: {
-            currency: "cad",
+            currency: "usd",
             product_data: {
               name: `EMI Payment - Installment #${emi.installmentNumber}`,
-              description: `Loan: ${emi.loanId.loanId || emi.loanId.category} | Due: ${new Date(emi.dueDate).toLocaleDateString()}`,
+              description: `Loan: ${loan.loanId} | ${loan.category}`,
             },
             unit_amount: Math.round(totalAmount * 100),
           },
@@ -811,14 +828,14 @@ export const createEMICheckoutSession = async (req, res) => {
       ],
       metadata: {
         emiId: emi._id.toString(),
-        loanId: emi.loanId._id.toString(),
+        loanId: loan._id.toString(),
         studentId: student._id.toString(),
         userId: userId,
-        type: "emi_payment",
+        type: "first_payment",
         installmentNumber: emi.installmentNumber.toString(),
       },
-      success_url: `${origin}/emi-schedule?emi_session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/emi-schedule?emi_cancelled=true`,
+      success_url: `${origin}/auto-debit?payment_success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/auto-debit?payment_cancelled=true`,
     });
 
     res.status(200).json({
@@ -826,19 +843,20 @@ export const createEMICheckoutSession = async (req, res) => {
       sessionUrl: session.url,
       sessionId: session.id,
       amount: totalAmount,
+      installmentNumber: emi.installmentNumber,
     });
   } catch (error) {
-    console.error("Create EMI checkout error:", error);
-    res.status(500).json({ success: false, msg: "Failed to create EMI checkout", error: error.message });
+    console.error("Create first payment error:", error);
+    res.status(500).json({ success: false, msg: "Failed to create payment session", error: error.message });
   }
 };
 
 /**
- * @desc    Verify EMI payment session
- * @route   POST /api/stripe/verify-emi-payment
+ * @desc    Verify first payment and activate auto-debit
+ * @route   POST /api/stripe/verify-first-payment
  * @access  Private (Student)
  */
-export const verifyEMIPayment = async (req, res) => {
+export const verifyFirstPayment = async (req, res) => {
   try {
     const userId = req.user.id;
     const { sessionId } = req.body;
@@ -867,6 +885,7 @@ export const verifyEMIPayment = async (req, res) => {
     }
 
     const emiId = session.metadata.emiId;
+    const loanId = session.metadata.loanId;
     const EMIScheduleModel = (await import("../../models/emiSchedule.model.js")).default;
     const emi = await EMIScheduleModel.findById(emiId).populate("loanId");
 
@@ -876,10 +895,18 @@ export const verifyEMIPayment = async (req, res) => {
 
     // Idempotent — if already paid, return success
     if (emi.status === "paid") {
+      const loan = await Loan.findById(loanId);
       return res.status(200).json({
         success: true,
-        msg: "EMI already marked as paid",
-        data: { emiId: emi._id, status: emi.status, paidAt: emi.paidAt },
+        msg: "Payment already verified",
+        autoDebitEnabled: loan.autoDebitEnabled,
+        data: {
+          emiId: emi._id,
+          amount: emi.totalAmount || emi.amount,
+          paidAt: emi.paidAt,
+          loanStatus: loan.status,
+          autoDebitEnabled: loan.autoDebitEnabled,
+        },
       });
     }
 
@@ -887,16 +914,28 @@ export const verifyEMIPayment = async (req, res) => {
     const totalAmount = session.amount_total / 100;
 
     // Calculate late fee if applicable
-    if (emi.isOverdue) {
-      const lateFeePercentage = Math.min(emi.daysOverdue * 0.01, 0.1);
+    const daysOverdue = Math.max(0, Math.ceil((new Date() - new Date(emi.dueDate)) / (1000 * 60 * 60 * 24)));
+    if (daysOverdue > 0) {
+      const lateFeePercentage = Math.min(daysOverdue * 0.01, 0.1);
       emi.lateFee = Math.round(emi.amount * lateFeePercentage * 100) / 100;
-      emi.totalAmount = totalAmount;
     }
+    emi.totalAmount = totalAmount;
 
     // Mark EMI as paid
     emi.status = "paid";
     emi.paidAt = new Date();
     emi.stripePaymentIntentId = session.payment_intent;
+
+    // Get default payment method for auto-debit
+    const defaultPaymentMethod = await PaymentMethod.findOne({
+      studentId: student._id,
+      isDefault: true,
+      isActive: true,
+    });
+
+    if (defaultPaymentMethod) {
+      emi.paymentMethodId = defaultPaymentMethod._id;
+    }
 
     // Create transaction
     const transaction = await Transaction.create({
@@ -914,30 +953,64 @@ export const verifyEMIPayment = async (req, res) => {
     await emi.save();
 
     // Update loan
-    const loan = await Loan.findById(emi.loanId._id);
+    const loan = await Loan.findById(loanId);
     loan.paidAmount += totalAmount;
 
+    // Check if this was the first EMI payment - auto-enable auto-debit
+    const paidEMIsCount = await EMIScheduleModel.countDocuments({
+      loanId: loan._id,
+      status: "paid",
+    });
+
+    let autoDebitActivated = false;
+    if (paidEMIsCount === 1 && defaultPaymentMethod) {
+      // First EMI paid - auto-enable auto-debit
+      loan.autoDebitEnabled = true;
+      loan.defaultPaymentMethod = defaultPaymentMethod._id;
+      loan.autoDebitStatus = "active";
+      autoDebitActivated = true;
+      console.log(`Auto-debit activated for loan ${loan.loanId}`);
+    }
+
+    // Check if loan is completed
     if (loan.paidAmount >= loan.totalWithInterest - 0.5) {
       loan.status = "Completed";
       loan.paidAmount = loan.totalWithInterest;
+    }
+
+    // Update next payment due date
+    const nextEMI = await EMIScheduleModel.findOne({
+      loanId: loan._id,
+      status: "pending",
+    }).sort({ dueDate: 1 });
+
+    if (nextEMI) {
+      loan.nextPaymentDueDate = nextEMI.dueDate;
     }
 
     await loan.save();
 
     res.status(200).json({
       success: true,
-      msg: "EMI payment verified and recorded",
+      msg: autoDebitActivated
+        ? "Payment successful! Auto-debit has been activated for future payments."
+        : "Payment verified and recorded",
+      autoDebitActivated,
       data: {
         emiId: emi._id,
         amount: totalAmount,
         paidAt: emi.paidAt,
         transactionId: transaction.id,
         loanStatus: loan.status,
+        autoDebitEnabled: loan.autoDebitEnabled,
+        autoDebitStatus: loan.autoDebitStatus,
+        paidEMIs: paidEMIsCount,
+        totalEMIs: await EMIScheduleModel.countDocuments({ loanId: loan._id }),
       },
     });
   } catch (error) {
-    console.error("Verify EMI payment error:", error);
-    res.status(500).json({ success: false, msg: "Failed to verify EMI payment", error: error.message });
+    console.error("Verify first payment error:", error);
+    res.status(500).json({ success: false, msg: "Failed to verify payment", error: error.message });
   }
 };
 
@@ -952,6 +1025,6 @@ export default {
   processAutoDebit,
   createCardSetupSession,
   verifyCardSetup,
-  createEMICheckoutSession,
-  verifyEMIPayment,
+  createFirstPayment,
+  verifyFirstPayment,
 };

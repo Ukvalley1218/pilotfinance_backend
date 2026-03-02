@@ -9,8 +9,8 @@ import {
   createPaymentIntentHandler,
   createCardSetupSession,
   verifyCardSetup,
-  createEMICheckoutSession,
-  verifyEMIPayment,
+  createFirstPayment,
+  verifyFirstPayment,
 } from "../../controllers/user/stripeController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
 
@@ -80,17 +80,17 @@ router.post("/create-card-setup-session", protect, createCardSetupSession);
 router.post("/verify-card-setup", protect, verifyCardSetup);
 
 /**
- * @route   POST /api/stripe/create-emi-checkout
- * @desc    Create Stripe Checkout Session for EMI payment
+ * @route   POST /api/stripe/create-first-payment
+ * @desc    Create Stripe Checkout Session for first EMI payment (activates auto-debit)
  * @access  Private (Student)
  */
-router.post("/create-emi-checkout", protect, createEMICheckoutSession);
+router.post("/create-first-payment", protect, createFirstPayment);
 
 /**
- * @route   POST /api/stripe/verify-emi-payment
- * @desc    Verify EMI payment checkout session
+ * @route   POST /api/stripe/verify-first-payment
+ * @desc    Verify first payment and activate auto-debit
  * @access  Private (Student)
  */
-router.post("/verify-emi-payment", protect, verifyEMIPayment);
+router.post("/verify-first-payment", protect, verifyFirstPayment);
 
 export default router;

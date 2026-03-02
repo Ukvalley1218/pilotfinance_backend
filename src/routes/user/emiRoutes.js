@@ -1,28 +1,18 @@
 import express from "express";
 import {
-  getEMISchedule,
   toggleAutoDebit,
-  manualPayEMI,
-  getAllEMISchedules,
-  getEMIDetails,
+  getAutoDebitStatus,
 } from "../../controllers/user/emiController.js";
 import { protect } from "../../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
 /**
- * @route   GET /api/emi/all
- * @desc    Get all EMI schedules for the logged-in student
+ * @route   GET /api/emi/auto-debit-status
+ * @desc    Get auto-debit status for all loans
  * @access  Private (Student)
  */
-router.get("/all", protect, getAllEMISchedules);
-
-/**
- * @route   GET /api/emi/schedule/:loanId
- * @desc    Get EMI schedule for a specific loan
- * @access  Private (Student)
- */
-router.get("/schedule/:loanId", protect, getEMISchedule);
+router.get("/auto-debit-status", protect, getAutoDebitStatus);
 
 /**
  * @route   POST /api/emi/toggle-autodebit/:loanId
@@ -30,19 +20,5 @@ router.get("/schedule/:loanId", protect, getEMISchedule);
  * @access  Private (Student)
  */
 router.post("/toggle-autodebit/:loanId", protect, toggleAutoDebit);
-
-/**
- * @route   GET /api/emi/:emiId
- * @desc    Get EMI details
- * @access  Private (Student)
- */
-router.get("/:emiId", protect, getEMIDetails);
-
-/**
- * @route   POST /api/emi/pay/:emiId
- * @desc    Manual EMI payment
- * @access  Private (Student)
- */
-router.post("/pay/:emiId", protect, manualPayEMI);
 
 export default router;

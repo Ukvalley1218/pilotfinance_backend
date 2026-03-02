@@ -1,6 +1,5 @@
 import EMISchedule from "../../models/emiSchedule.model.js";
 import Loan from "../../models/loan.js";
-import Transaction from "../../models/transaction.model.js";
 import { Student } from "../../models/student.model.js";
 import PaymentMethod from "../../models/paymentMethod.model.js";
 
@@ -76,13 +75,12 @@ export const generateEMISchedule = async (loan) => {
 };
 
 /**
- * @desc    Get EMI schedule for a loan
- * @route   GET /api/emi/schedule/:loanId
+ * @desc    Get auto-debit status for all loans
+ * @route   GET /api/emi/auto-debit-status
  * @access  Private (Student)
  */
-export const getEMISchedule = async (req, res) => {
+export const getAutoDebitStatus = async (req, res) => {
   try {
-    const { loanId } = req.params;
     const userId = req.user.id;
 
     // Find student
@@ -94,51 +92,76 @@ export const getEMISchedule = async (req, res) => {
       });
     }
 
-    // Verify loan belongs to student
-    const loan = await Loan.findOne({ _id: loanId, studentId: student._id });
-    if (!loan) {
-      return res.status(404).json({
-        success: false,
-        msg: "Loan not found",
-      });
-    }
+    // Get all active loans for this student
+    const loans = await Loan.find({
+      studentId: student._id,
+      status: { $in: ["Disbursed", "Active"] },
+    }).sort({ createdAt: -1 });
 
-    // Get EMI schedule
-    const emiSchedules = await EMISchedule.find({ loanId })
-      .sort({ installmentNumber: 1 });
+    // Get payment methods
+    const paymentMethods = await PaymentMethod.find({
+      studentId: student._id,
+      isActive: true,
+    }).sort({ isDefault: -1, createdAt: -1 });
+
+    const defaultPaymentMethod = paymentMethods.find((pm) => pm.isDefault);
+
+    // Get EMI summary for each loan
+    const loanSummaries = await Promise.all(
+      loans.map(async (loan) => {
+        const emiSchedule = await EMISchedule.find({ loanId: loan._id }).sort({
+          installmentNumber: 1,
+        });
+
+        const paidEMIs = emiSchedule.filter((e) => e.status === "paid").length;
+        const pendingEMIs = emiSchedule.filter(
+          (e) => e.status === "pending" || e.status === "overdue"
+        ).length;
+        const nextEMI = emiSchedule.find(
+          (e) => e.status === "pending" || e.status === "overdue"
+        );
+
+        return {
+          loanId: loan._id,
+          loanRef: loan.loanId,
+          category: loan.category,
+          status: loan.status,
+          totalAmount: loan.totalWithInterest,
+          paidAmount: loan.paidAmount,
+          monthlyPayment: loan.monthlyPayment,
+          autoDebitEnabled: loan.autoDebitEnabled,
+          autoDebitStatus: loan.autoDebitStatus,
+          nextPaymentDueDate: loan.nextPaymentDueDate,
+          totalEMIs: emiSchedule.length,
+          paidEMIs,
+          pendingEMIs,
+          nextEMIAmount: nextEMI?.amount || 0,
+          nextEMIDueDate: nextEMI?.dueDate || null,
+          hasDefaultPaymentMethod: !!defaultPaymentMethod,
+        };
+      })
+    );
 
     res.status(200).json({
       success: true,
       data: {
-        loan: {
-          loanId: loan.loanId,
-          status: loan.status,
-          totalWithInterest: loan.totalWithInterest,
-          paidAmount: loan.paidAmount,
-          principalRequested: loan.principalRequested,
-          autoDebitEnabled: loan.autoDebitEnabled,
-          autoDebitStatus: loan.autoDebitStatus,
-        },
-        emiSchedules: emiSchedules.map((emi) => ({
-          id: emi._id,
-          installmentNumber: emi.installmentNumber,
-          amount: emi.amount,
-          totalAmount: emi.totalAmount || emi.amount,
-          dueDate: emi.dueDate,
-          status: emi.status,
-          paidAt: emi.paidAt,
-          isOverdue: emi.isOverdue,
-          daysOverdue: emi.daysOverdue,
-          lateFee: emi.lateFee || 0,
-          retryCount: emi.retryCount,
+        loans: loanSummaries,
+        paymentMethods: paymentMethods.map((pm) => ({
+          id: pm._id,
+          last4: pm.last4,
+          brand: pm.brand,
+          expMonth: pm.expMonth,
+          expYear: pm.expYear,
+          isDefault: pm.isDefault,
         })),
+        hasDefaultPaymentMethod: !!defaultPaymentMethod,
       },
     });
   } catch (error) {
-    console.error("Get EMI schedule error:", error);
+    console.error("Get auto-debit status error:", error);
     res.status(500).json({
       success: false,
-      msg: "Failed to get EMI schedule",
+      msg: "Failed to get auto-debit status",
       error: error.message,
     });
   }
@@ -181,6 +204,20 @@ export const toggleAutoDebit = async (req, res) => {
       });
     }
 
+    // Check if at least one EMI has been paid (first payment made)
+    const paidEMIs = await EMISchedule.countDocuments({
+      loanId: loan._id,
+      status: "paid",
+    });
+
+    if (enabled && paidEMIs === 0) {
+      return res.status(400).json({
+        success: false,
+        msg: "Please make your first EMI payment before enabling auto-debit",
+        requiresFirstPayment: true,
+      });
+    }
+
     if (enabled) {
       // Check if student has a default payment method
       const defaultPaymentMethod = await PaymentMethod.findOne({
@@ -193,6 +230,7 @@ export const toggleAutoDebit = async (req, res) => {
         return res.status(400).json({
           success: false,
           msg: "Please add a payment method and set it as default before enabling auto-debit",
+          requiresPaymentMethod: true,
         });
       }
 
@@ -225,271 +263,8 @@ export const toggleAutoDebit = async (req, res) => {
   }
 };
 
-/**
- * @desc    Manual EMI payment
- * @route   POST /api/emi/pay/:emiId
- * @access  Private (Student)
- */
-export const manualPayEMI = async (req, res) => {
-  try {
-    const { emiId } = req.params;
-    const { paymentMethodId, paymentIntentId } = req.body;
-    const userId = req.user.id;
-
-    // Find student
-    const student = await Student.findOne({ userId });
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        msg: "Student profile not found",
-      });
-    }
-
-    // Find EMI schedule
-    const emi = await EMISchedule.findById(emiId).populate("loanId");
-    if (!emi) {
-      return res.status(404).json({
-        success: false,
-        msg: "EMI schedule not found",
-      });
-    }
-
-    // Verify EMI belongs to student
-    if (emi.studentId.toString() !== student._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        msg: "Not authorized to pay this EMI",
-      });
-    }
-
-    // Check if already paid
-    if (emi.status === "paid") {
-      return res.status(400).json({
-        success: false,
-        msg: "EMI already paid",
-      });
-    }
-
-    // Get payment method
-    const paymentMethod = await PaymentMethod.findById(paymentMethodId);
-    if (!paymentMethod || paymentMethod.studentId.toString() !== student._id.toString()) {
-      return res.status(400).json({
-        success: false,
-        msg: "Invalid payment method",
-      });
-    }
-
-    // Calculate total amount (EMI + late fee if overdue)
-    let totalAmount = emi.amount;
-    if (emi.isOverdue) {
-      // Add late fee (e.g., 1% of EMI amount per day overdue, max 10%)
-      const lateFeePercentage = Math.min(emi.daysOverdue * 0.01, 0.1);
-      emi.lateFee = Math.round(emi.amount * lateFeePercentage * 100) / 100;
-      totalAmount = emi.amount + emi.lateFee;
-    }
-    emi.totalAmount = totalAmount;
-
-    // Update EMI status
-    emi.status = "paid";
-    emi.paidAt = new Date();
-    emi.paymentMethodId = paymentMethodId;
-    emi.stripePaymentIntentId = paymentIntentId || null;
-
-    // Create transaction
-    const transaction = await Transaction.create({
-      id: `TXN-${Math.floor(100000 + Math.random() * 900000)}`,
-      userId: userId,
-      studentId: student._id,
-      type: "Debit",
-      desc: `EMI Payment - Installment ${emi.installmentNumber}`,
-      subDesc: `Loan Ref: ${emi.loanId.loanId}`,
-      amount: totalAmount,
-      status: "Completed",
-    });
-
-    emi.transactionId = transaction._id;
-    await emi.save();
-
-    // Update loan paid amount
-    const loan = await Loan.findById(emi.loanId._id);
-    loan.paidAmount += totalAmount;
-
-    // Check if loan is completed
-    if (loan.paidAmount >= loan.totalWithInterest - 0.5) {
-      loan.status = "Completed";
-      loan.paidAmount = loan.totalWithInterest;
-    }
-
-    await loan.save();
-
-    res.status(200).json({
-      success: true,
-      msg: "EMI payment successful",
-      data: {
-        emiId: emi._id,
-        amount: totalAmount,
-        paidAt: emi.paidAt,
-        transactionId: transaction.id,
-        loanStatus: loan.status,
-        loanPaidAmount: loan.paidAmount,
-      },
-    });
-  } catch (error) {
-    console.error("Manual EMI payment error:", error);
-    res.status(500).json({
-      success: false,
-      msg: "Failed to process EMI payment",
-      error: error.message,
-    });
-  }
-};
-
-/**
- * @desc    Get all EMI schedules for a student
- * @route   GET /api/emi/all
- * @access  Private (Student)
- */
-export const getAllEMISchedules = async (req, res) => {
-  try {
-    const userId = req.user.id;
-
-    // Find student
-    const student = await Student.findOne({ userId });
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        msg: "Student profile not found",
-      });
-    }
-
-    // Get all EMI schedules for this student
-    const emiSchedules = await EMISchedule.find({ studentId: student._id })
-      .populate("loanId", "loanId status category monthlyPayment")
-      .sort({ dueDate: 1 });
-
-    // Group by loan
-    const groupedByLoan = {};
-    emiSchedules.forEach((emi) => {
-      const loanId = emi.loanId._id.toString();
-      if (!groupedByLoan[loanId]) {
-        groupedByLoan[loanId] = {
-          loanId: loanId,
-          loanRef: emi.loanId.loanId,
-          status: emi.loanId.status,
-          category: emi.loanId.category,
-          monthlyPayment: emi.loanId.monthlyPayment,
-          emiSchedules: [],
-        };
-      }
-      groupedByLoan[loanId].emiSchedules.push({
-        id: emi._id,
-        installmentNumber: emi.installmentNumber,
-        amount: emi.amount,
-        totalAmount: emi.totalAmount || emi.amount,
-        dueDate: emi.dueDate,
-        status: emi.status,
-        paidAt: emi.paidAt,
-        isOverdue: emi.isOverdue,
-        daysOverdue: emi.daysOverdue,
-        lateFee: emi.lateFee || 0,
-      });
-    });
-
-    res.status(200).json({
-      success: true,
-      data: Object.values(groupedByLoan),
-    });
-  } catch (error) {
-    console.error("Get all EMI schedules error:", error);
-    res.status(500).json({
-      success: false,
-      msg: "Failed to get EMI schedules",
-      error: error.message,
-    });
-  }
-};
-
-/**
- * @desc    Get EMI details
- * @route   GET /api/emi/:emiId
- * @access  Private (Student)
- */
-export const getEMIDetails = async (req, res) => {
-  try {
-    const { emiId } = req.params;
-    const userId = req.user.id;
-
-    // Find student
-    const student = await Student.findOne({ userId });
-    if (!student) {
-      return res.status(404).json({
-        success: false,
-        msg: "Student profile not found",
-      });
-    }
-
-    // Find EMI
-    const emi = await EMISchedule.findById(emiId)
-      .populate("loanId")
-      .populate("paymentMethodId");
-
-    if (!emi) {
-      return res.status(404).json({
-        success: false,
-        msg: "EMI schedule not found",
-      });
-    }
-
-    // Verify EMI belongs to student
-    if (emi.studentId.toString() !== student._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        msg: "Not authorized",
-      });
-    }
-
-    res.status(200).json({
-      success: true,
-      data: {
-        id: emi._id,
-        installmentNumber: emi.installmentNumber,
-        amount: emi.amount,
-        totalAmount: emi.totalAmount || emi.amount,
-        dueDate: emi.dueDate,
-        status: emi.status,
-        paidAt: emi.paidAt,
-        isOverdue: emi.isOverdue,
-        daysOverdue: emi.daysOverdue,
-        lateFee: emi.lateFee || 0,
-        retryCount: emi.retryCount,
-        loan: {
-          id: emi.loanId._id,
-          loanId: emi.loanId.loanId,
-          status: emi.loanId.status,
-          category: emi.loanId.category,
-        },
-        paymentMethod: emi.paymentMethodId ? {
-          id: emi.paymentMethodId._id,
-          last4: emi.paymentMethodId.last4,
-          brand: emi.paymentMethodId.brand,
-        } : null,
-      },
-    });
-  } catch (error) {
-    console.error("Get EMI details error:", error);
-    res.status(500).json({
-      success: false,
-      msg: "Failed to get EMI details",
-      error: error.message,
-    });
-  }
-};
-
 export default {
   generateEMISchedule,
-  getEMISchedule,
+  getAutoDebitStatus,
   toggleAutoDebit,
-  manualPayEMI,
-  getAllEMISchedules,
-  getEMIDetails,
 };
