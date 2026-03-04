@@ -878,7 +878,7 @@ export const verifyStudent = async (req, res) => {
 export const addStudentByPartner = async (req, res) => {
   try {
     const partnerId = req.user?.id;
-    const { name, email, phone, password, address } = req.body;
+    const { name, email, phone, password, address,country } = req.body;
 
     // ✅ Check partner authentication
     if (!partnerId) {
@@ -914,6 +914,7 @@ export const addStudentByPartner = async (req, res) => {
       phone,
       password,
       address,
+      country,
       referredBy: partnerId,
       status: "Pending",
     });
