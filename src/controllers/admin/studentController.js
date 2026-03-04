@@ -8,7 +8,7 @@ import { Notification } from "../../models/notification.model.js";
  */
 export const createStudent = async (req, res) => {
   try {
-    const { name, email, phone, country, password } = req.body;
+    const { name, email, phone, country, password,referredBy } = req.body;
 
     if (!name || !email || !phone || !password) {
       return res.status(400).json({ message: "Name, email, phone, password required" });
@@ -24,6 +24,7 @@ export const createStudent = async (req, res) => {
       email: cleanEmail,
       phone,
       country,
+      referredBy,
       password,
       kycStatus: "Not Submitted",
       loanStatus: "Not Applied",
