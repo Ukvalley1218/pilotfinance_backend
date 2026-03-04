@@ -154,7 +154,7 @@ const studentSchema = new mongoose.Schema(
     agency: { type: String, default: "" },
     uni: { type: String, default: "" },
     course: { type: String, default: "" },
-    country: { type: String, default: "USA" },
+    country: { type: String, default: "CAD" },
     intake: { type: String, default: "" },
     duration: { type: String, default: "" },
     appId: { type: String, default: "" },
