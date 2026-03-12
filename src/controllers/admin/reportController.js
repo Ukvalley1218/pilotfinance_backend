@@ -8,13 +8,17 @@ export const getReports = async (req, res) => {
     const report = await generateReportData(req.query);
 
     // EXPORT HANDLING
-    if (req.query.export === "csv") {
-      const parser = new Parser();
-      const csv = parser.parse(report.table);
-      res.header("Content-Type", "text/csv");
-      res.attachment("report.csv");
-      return res.send(csv);
-    }
+if (req.query.export === "csv") {
+
+  const fields = Object.keys(report.table?.[0] || {});
+
+  const parser = new Parser({ fields });
+  const csv = parser.parse(report.table || []);
+
+  res.header("Content-Type", "text/csv");
+  res.attachment("report.csv");
+  return res.send(csv);
+}
 
     if (req.query.export === "excel") {
       const workbook = new ExcelJS.Workbook();
