@@ -29,12 +29,20 @@ export const generateEMISchedule = async (loan) => {
     const tenureMatch = loan.period.match(/(\d+)/);
     const tenure = tenureMatch ? parseInt(tenureMatch[1]) : 12;
 
-    // Calculate EMI amount
-    const emiAmount = calculateEMI(
-      loan.principalRequested,
-      loan.interestRate,
-      tenure
-    );
+    // Use the loan's monthlyPayment (what was shown to user and agreed upon)
+    // DO NOT recalculate - the user agreed to this amount when requesting the loan
+    const emiAmount = loan.monthlyPayment;
+
+    if (!emiAmount || emiAmount <= 0) {
+      console.error('Loan missing monthlyPayment, falling back to calculation');
+      // Fallback to calculation if monthlyPayment is not set
+      const fallbackEmi = calculateEMI(
+        loan.principalRequested,
+        loan.interestRate,
+        tenure
+      );
+      // This should not happen in normal flow
+    }
 
     // Calculate disbursement date (use current date if not set)
     const disbursementDate = loan.disbursementDate ? new Date(loan.disbursementDate) : new Date();
@@ -83,8 +91,9 @@ export const getAutoDebitStatus = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Find student
-    const student = await Student.findOne({ userId });
+    // Find student - req.user from User Panel login IS a Student document
+    // So userId here is the Student's _id, not a userId field
+    const student = await Student.findById(userId);
     if (!student) {
       return res.status(404).json({
         success: false,
@@ -178,8 +187,9 @@ export const toggleAutoDebit = async (req, res) => {
     const { enabled } = req.body;
     const userId = req.user.id;
 
-    // Find student
-    const student = await Student.findOne({ userId });
+    // Find student - req.user from User Panel login IS a Student document
+    // So userId here is the Student's _id, not a userId field
+    const student = await Student.findById(userId);
     if (!student) {
       return res.status(404).json({
         success: false,
