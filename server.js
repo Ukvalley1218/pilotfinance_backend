@@ -22,6 +22,8 @@ import financeRoutes from "./src/routes/admin/financeRoutes.js";
 import adminNotificationRoutes from "./src/routes/admin/notificationRoutes.js";
 import dashboardstats from "./src/routes/admin/dashboard.stats.js";
 import adminKycRoutes from "./src/routes/admin/admin.kyc.routes.js";;
+import tourAdminRoutes from "./src/routes/admin/tourRoutes.js";
+import tourPublicRoutes from "./src/routes/tourRoutes.js";
 
 // --- IMPORT USER ROUTES ---
 import userAuthRoutes from "./src/routes/user/authRoutes.js";
@@ -134,6 +136,10 @@ const allowedOrigins = [
   "https://pf.valleyhoster.com",
   "https://pfrequrt.valleyhoster.com",
   "https://pfuser.valleyhoster.com",
+  "https://admin.newfi.ca",
+  "https://partner.newfi.ca",
+  "https://student.newfi.ca",
+  "https://newfi.ca",
 ];
 
 app.use(
@@ -180,8 +186,10 @@ app.use("/api/admin/finance", financeRoutes);
 app.use("/api/admin/notification", adminNotificationRoutes);
 app.use("/api/admin/dashboard/stats", dashboardstats);
 app.use("/api/admin/kyc", adminKycRoutes);
+app.use("/api/admin/tour", tourAdminRoutes);
 
 // --- 📱 USER PANEL ROUTES ---
+app.use("/api/tour", tourPublicRoutes);
 app.use("/api/auth", userAuthRoutes);
 app.use("/api/kyc", userKycRoutes);
 app.use("/api/dashboard", userDashboardRoutes);
