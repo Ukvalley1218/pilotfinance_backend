@@ -21,8 +21,11 @@ export const createLoan = async (req, res) => {
     const n = parseInt(period) || 12;
     const r = (interestRate || 2.5) / 100;
 
+    // EMI calculation using periodic rate formula
+    // This is the EMI amount shown to user when they request the loan
     const emi = Math.round(
-      (principalRequested * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1),
+      (principalRequested * r * Math.pow(1 + r, n)) /
+      (Math.pow(1 + r, n) - 1)
     );
 
     const totalWithInterest = emi * n;
@@ -221,6 +224,7 @@ if (student?.referredBy && commissionConfig) {
     if (status === "Disbursed" && loan.status !== "Disbursed") {
       console.log("➡️ Changing status to DISBURSED");
 
+      // Update loan status and disbursement date
       loan.status = "Disbursed";
       loan.disbursementDate = new Date();
       loan.remainingAmount = loan.totalAmount;
@@ -230,6 +234,16 @@ if (student?.referredBy && commissionConfig) {
 
       console.log("👤 Student ID:", student?._id);
       console.log("💵 Disbursement Amount:", amount);
+      console.log("📋 Loan Period:", loan.period);
+      console.log("📊 Interest Rate:", loan.interestRate);
+      console.log("💰 Principal:", loan.principalRequested);
+
+      // Validate required fields for EMI generation
+      if (!loan.period || !loan.principalRequested) {
+        console.error("❌ Missing required loan fields for EMI generation");
+        console.log("Period:", loan.period);
+        console.log("Principal:", loan.principalRequested);
+      }
 
       await Student.findByIdAndUpdate(student._id, {
         loanStatus: "Active",
@@ -252,13 +266,24 @@ if (student?.referredBy && commissionConfig) {
 
       console.log("✅ Loan Disbursement Transaction Created:", txn._id);
 
+      // Save loan before generating EMI schedule
+      await loan.save();
+      console.log("✅ Loan saved with disbursement date:", loan.disbursementDate);
+
       // Generate EMI Schedule for auto-debit
       try {
+        console.log("🔄 Attempting to generate EMI schedule...");
         const emiSchedule = await generateEMISchedule(loan);
         console.log(`✅ EMI Schedule Generated: ${emiSchedule.length} installments`);
+
+        // Log each EMI
+        emiSchedule.forEach((emi, index) => {
+          console.log(`   EMI ${index + 1}: $${emi.amount} due ${emi.dueDate.toISOString().split('T')[0]}`);
+        });
       } catch (emiError) {
-        console.error("⚠️ Failed to generate EMI schedule:", emiError.message);
-        // Continue without failing the disbursement
+        console.error("❌ Failed to generate EMI schedule:", emiError.message);
+        console.error("Stack:", emiError.stack);
+        // Don't throw - continue without failing the disbursement
       }
     }
 
